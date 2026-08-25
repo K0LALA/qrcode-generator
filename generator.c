@@ -5,7 +5,14 @@
 
 #include "qdbmp.h"
 
+const unsigned char LOG_TABLE[256] = { 1, 2, 4, 8, 16, 32, 64, 128, 29, 58, 116, 232, 205, 135, 19, 38, 76, 152, 45, 90, 180, 117, 234, 201, 143, 3, 6, 12, 24, 48, 96, 192, 157, 39, 78, 156, 37, 74, 148, 53, 106, 212, 181, 119, 238, 193, 159, 35, 70, 140, 5, 10, 20, 40, 80, 160, 93, 186, 105, 210, 185, 111, 222, 161, 95, 190, 97, 194, 153, 47, 94, 188, 101, 202, 137, 15, 30, 60, 120, 240, 253, 231, 211, 187, 107, 214, 177, 127, 254, 225, 223, 163, 91, 182, 113, 226, 217, 175, 67, 134, 17, 34, 68, 136, 13, 26, 52, 104, 208, 189, 103, 206, 129, 31, 62, 124, 248, 237, 199, 147, 59, 118, 236, 197, 151, 51, 102, 204, 133, 23, 46, 92, 184, 109, 218, 169, 79, 158, 33, 66, 132, 21, 42, 84, 168, 77, 154, 41, 82, 164, 85, 170, 73, 146, 57, 114, 228, 213, 183, 115, 230, 209, 191, 99, 198, 145, 63, 126, 252, 229, 215, 179, 123, 246, 241, 255, 227, 219, 171, 75, 150, 49, 98, 196, 149, 55, 110, 220, 165, 87, 174, 65, 130, 25, 50, 100, 200, 141, 7, 14, 28, 56, 112, 224, 221, 167, 83, 166, 81, 162, 89, 178, 121, 242, 249, 239, 195, 155, 43, 86, 172, 69, 138, 9, 18, 36, 72, 144, 61, 122, 244, 245, 247, 243, 251, 235, 203, 139, 11, 22, 44, 88, 176, 125, 250, 233, 207, 131, 27, 54, 108, 216, 173, 71, 142, 1 };
+
+// Index 0 shouldn't be used
+const unsigned char ANTILOG_TABLE[256] = { 0, 0, 1, 25, 2, 50, 26, 198, 3, 223, 51, 238, 27, 104, 199, 75, 4, 100, 224, 14, 52, 141, 239, 129, 28, 193, 105, 248, 200, 8, 76, 113, 5, 138, 101, 47, 225, 36, 15, 33, 53, 147, 142, 218, 240, 18, 130, 69, 29, 181, 194, 125, 106, 39, 249, 185, 201, 154, 9, 120, 77, 228, 114, 166, 6, 191, 139, 98, 102, 221, 48, 253, 226, 152, 37, 179, 16, 145, 34, 136, 54, 208, 148, 206, 143, 150, 219, 189, 241, 210, 19, 92, 131, 56, 70, 64, 30, 66, 182, 163, 195, 72, 126, 110, 107, 58, 40, 84, 250, 133, 186, 61, 202, 94, 155, 159, 10, 21, 121, 43, 78, 212, 229, 172, 115, 243, 167, 87, 7, 112, 192, 247, 140, 128, 99, 13, 103, 74, 222, 237, 49, 197, 254, 24, 227, 165, 153, 119, 38, 184, 180, 124, 17, 68, 146, 217, 35, 32, 137, 46, 55, 63, 209, 91, 149, 188, 207, 205, 144, 135, 151, 178, 220, 252, 190, 97, 242, 86, 211, 171, 20, 42, 93, 158, 132, 60, 57, 83, 71, 109, 65, 162, 31, 45, 67, 216, 183, 123, 164, 118, 196, 23, 73, 236, 127, 12, 111, 246, 108, 161, 59, 82, 41, 157, 85, 170, 251, 96, 134, 177, 187, 204, 62, 90, 203, 89, 95, 176, 156, 169, 160, 81, 11, 245, 22, 235, 122, 117, 44, 215, 79, 174, 213, 233, 230, 231, 173, 232, 116, 214, 244, 234, 168, 80, 88, 175 };
+
 #define SIZE 21             // We are using version 1
+#define DATA_COUNT 19
+#define EC_COUNT 7
 
 bool isAfterVerticalTimingPattern(const int x)
 {
@@ -96,20 +103,30 @@ bool getNextDataPosition(int* px, int* py)
     return (x == 0 && y == getYLowerBoundary(x));
 }
 
-/// Writes the data starting from startX and startY
+/// Writes the content starting from startX and startY
 /// @param code A pointer to the first element of the code
-/// @param startX A pointer to the starting x position for the data, will be changed to starting position for next data
-/// @param startY A pointer to the starting y position for the data, will be changed to starting position for next data
-/// @param data The data, MSB will be written first on the QR-Code
-/// @param dataLength, The number of bits from data to write, starting from MSB
+/// @param startX A pointer to the starting x position for the data, will be changed to starting position for next content
+/// @param startY A pointer to the starting y position for the data, will be changed to starting position for next content
+/// @param content The content, MSB will be written first on the QR-Code
+/// @param contentLength The number of bits from content to write, starting from MSB
+/// @param dataRecord A pointer to an array of data, used for EC computations, NULL if it not data (e.g. EC modules)
 /// @return true if the end of the QR-Code is reached, false otherwise
-bool writeDataToCode(bool* code, int *startX, int *startY, const unsigned char data, const unsigned char dataLength)
+bool writeToCode(bool* code, int *startX, int *startY, const unsigned char content, const unsigned char contentLength, unsigned char *dataRecord)
 {
-    unsigned char dataCopy = data;
+    static unsigned char dataIndex = 0;
+
+    unsigned char contentCopy = content;
     int i;
-    for (i = 0; i < dataLength; i++)
+    for (i = 0; i < contentLength; i++)
     {
-        bool bit = dataCopy & (1 << 7);
+        bool bit = contentCopy & (1 << 7);
+        
+        if (dataRecord != NULL) {
+            dataRecord[dataIndex / 8] |= (bit << (7 - dataIndex % 8));    
+            
+            dataIndex++;
+        }
+
         if (bit)
         {
             code[*startY * SIZE + *startX] = 1;
@@ -119,7 +136,7 @@ bool writeDataToCode(bool* code, int *startX, int *startY, const unsigned char d
             printf("Couldn't write to QR-Code\n");
             return 1;
         }
-        dataCopy = dataCopy << 1;
+        contentCopy = contentCopy << 1;
     }
     return 0;
 }
@@ -156,11 +173,31 @@ int drawCode(const bool* code, const int size)
     BMP_WriteFile(bmp, "qr.bmp");
     BMP_CHECK_ERROR(stderr,-2);
     BMP_Free(bmp);
+    return 0;
+}
+
+/// Converts the whole array from alpha notation to integer notation using the log table
+void alpha2int(unsigned char *array, size_t size) {
+    int i;
+    for (i = 0; i < size; i++) {
+        array[i] = LOG_TABLE[array[i]];
+    }
+}
+
+/// Converts the whole array from integer notation to alpha notation using the antilog table
+void int2alpha(unsigned char *array, size_t size) {
+    int i;
+    for (i = 0; i < size; i++) {
+        array[i] = ANTILOG_TABLE[array[i]];
+    }
 }
 
 int main(int argc, char** argv)
 {
     bool codeGrid[SIZE*SIZE] = { 0 };
+
+    // The beginning of the message has the highest exponent
+    unsigned char messageCodewords[DATA_COUNT] = { 0 };
 
     char* message;
     if (argc >= 2)
@@ -176,27 +213,91 @@ int main(int argc, char** argv)
     int y = SIZE - 1;
 
     unsigned char encodingMode = 0b0100 << 4;        // Byte
-    writeDataToCode(codeGrid, &x, &y, encodingMode, 4);
+    writeToCode(codeGrid, &x, &y, encodingMode, 4, messageCodewords);
     unsigned char messageLength = strlen(message);
-    writeDataToCode(codeGrid, &x, &y, messageLength, 8);
+    writeToCode(codeGrid, &x, &y, messageLength, 8, messageCodewords);
 
     char* messagePointer = message;
     while(*messagePointer)
     {
-        writeDataToCode(codeGrid, &x, &y, *messagePointer, 8);
+        writeToCode(codeGrid, &x, &y, *messagePointer, 8, messageCodewords);
         messagePointer++;
     }
 
     // Terminator
     // TODO: Compute actual required size for the terminator
-    writeDataToCode(codeGrid, &x,&y, 0, 4);
+    writeToCode(codeGrid, &x,&y, 0, 4, messageCodewords);
 
     // TODO: Add padding to the end of the string if necessary
 
+    unsigned char errorCorrectionLevel = 0b01 << 6;  // Low
+    
+    // Since we are using version 1 it is not needed to split data codewords in 2 groups
+    // There are 7 EC codewords per block, and we have only 1 block for 1 group
+    // Generator polynomial:
+    // a^0x^7 + a^87x^6 + a^229x^5 + a^146x^4 + a^149x^3 + a^238x^2 + a^102x + a^21
+    // Message polynomial is using decimal values for each data codeword as coefficient for each term
+    // The first characters are the most significant, with 18 as the biggest exponent
+    // We now need to divide the message polynomial by the generator polynomial
+
+    // Polynomial division for Galois Field GF(256):
+    // Multiply the message poly by x^n where n is the number of EC codewords (7 for 1-L, making 25 be largest exponent)
+    // The lead term of the generator poly should have the exponent as the message poly
+    // Hence multiply the gen poly by x^18 for 1-L
+    
+    // We will store the 2 polynomials as 2 arrays where value with index i is multiplied by x^i in the polynomial
+
+    // The message codewords have been generated earlier, they are using integer notation
+    // We need to use alpha notation using the antilog table for polynomial long division
+    unsigned char generator[EC_COUNT + 1] = { 21, 102, 238, 149, 146, 229, 87, 0 };
+
+
+    // Next: divide the message polynomial by the generator polynomial to get EC codewords as the remainder of the division
+
+    unsigned char ECCodewords[DATA_COUNT] = { 0 }; // Starts at 19, finishes at 7
+
+    // Copy the message polynomial to ECCodewords and arranging the values so as to have the exponent corresponding to the index
+    int i, j;
+    for (i = 0; i < DATA_COUNT; i++) {
+        ECCodewords[i] = messageCodewords[DATA_COUNT - 1 - i];
+    }
+
+    unsigned char termsCount = DATA_COUNT;
+
+    // The number of steps should make the biggest exponent, 25 (c.f. few lines above) be the number of EC codewords minus 1, being 6 for 1-L
+    for (i = 0; i < DATA_COUNT; i++) {
+        /// Step A: Multiply the generator (G) by the lead term of the result from the previous step (P)
+        
+        // Convert P into alpha notation for easier multiplication
+        int2alpha(ECCodewords, DATA_COUNT);
+
+        unsigned char genMultiplied[EC_COUNT + 1] = { 0 };
+
+        // Multiply (G) by the lead term of (P) to get (M)
+        for (j = 0; j < EC_COUNT + 1; j++) {
+            unsigned short a = generator[j] + ECCodewords[termsCount - 1];
+            if (a > 255) a %= 255;
+            genMultiplied[j] = a;
+        }
+
+        // Convert back to integer notation
+        alpha2int(ECCodewords, DATA_COUNT);
+        alpha2int(genMultiplied, EC_COUNT + 1);
+
+        // Step B: (P) becomes (M) XOR (P)
+        for (j = 0; j < EC_COUNT + 1; j++) {
+            ECCodewords[j] ^= genMultiplied[j];
+        }
+
+        termsCount = termsCount > EC_COUNT ? termsCount - 1 : termsCount;
+    }
+
+    for (i = EC_COUNT - 1; i >= 0; i--) {
+        writeToCode(codeGrid, &x, &y, ECCodewords[i], 8, NULL);
+    }
+
     displayCode(codeGrid, SIZE);
     drawCode(codeGrid, SIZE);
-
-    unsigned char errorCorrectionLevel = 0b11 << 6;  // Low
 
     return 0;
 }
