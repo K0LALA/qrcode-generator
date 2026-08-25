@@ -116,6 +116,9 @@ bool writeToCode(bool* code, int *startX, int *startY, const unsigned char conte
     static unsigned char dataIndex = 0;
 
     unsigned char contentCopy = content;
+    
+    bool isFinished = false;
+    
     int i;
     for (i = 0; i < contentLength; i++)
     {
@@ -131,14 +134,14 @@ bool writeToCode(bool* code, int *startX, int *startY, const unsigned char conte
         {
             code[*startY * SIZE + *startX] = 1;
         }
-        if(getNextDataPosition(startX, startY))
-        {
-            printf("Couldn't write to QR-Code\n");
-            return 1;
+        if (isFinished && i < contentLength - 1) {
+            printf("Couldn't write to QR-Code, it is full\n");
+            break;
         }
+        isFinished = getNextDataPosition(startX, startY);
         contentCopy = contentCopy << 1;
     }
-    return 0;
+    return isFinished;
 }
 
 void displayCode(const bool* code, const int size)
@@ -158,16 +161,18 @@ void displayCode(const bool* code, const int size)
 
 int drawCode(const bool* code, const int size)
 {
-    BMP* bmp = BMP_Create(size, size, 24);
+    BMP* bmp = BMP_Create(size + 8, size + 8, 8);
     
+    BMP_SetPaletteColor(bmp, 0, 255, 255, 255);
+    BMP_SetPaletteColor(bmp, 1, 0, 0, 0);
+
     int y;
     for (y = 0; y < size; y++)
     {
         int x;
         for (x = 0; x < size; x++)
         {
-            UCHAR color = code[y * size + x] ? 0 : 255;
-            BMP_SetPixelRGB(bmp, x, y, color, color, color);
+            BMP_SetPixelIndex(bmp, x + 4, y + 4, code[y * size + x]);
         }
     }
     BMP_WriteFile(bmp, "qr.bmp");
@@ -177,7 +182,7 @@ int drawCode(const bool* code, const int size)
 }
 
 /// Converts the whole array from alpha notation to integer notation using the log table
-void alpha2int(unsigned char *array, size_t size) {
+void alpha2int(unsigned char *array, const size_t size) {
     int i;
     for (i = 0; i < size; i++) {
         array[i] = LOG_TABLE[array[i]];
@@ -185,10 +190,24 @@ void alpha2int(unsigned char *array, size_t size) {
 }
 
 /// Converts the whole array from integer notation to alpha notation using the antilog table
-void int2alpha(unsigned char *array, size_t size) {
+void int2alpha(unsigned char *array, const size_t size) {
     int i;
     for (i = 0; i < size; i++) {
         array[i] = ANTILOG_TABLE[array[i]];
+    }
+}
+
+void writeFinderPatternToCode(bool* code, const unsigned char x, const unsigned char y) {
+    // Draw a 7x7 square but avoid the second inner shell
+    unsigned char sy;
+    for (sy = 0; sy < 7; sy++) {
+        unsigned char sx;
+        for (sx = 0; sx < 7; sx++) {
+            if (((sx == 1 || sx == 5) && (sy > 0 && sy < 6)) ||
+                ((sy == 1 || sy == 5) && (sx > 0 && sx < 6))) continue;
+
+            code[(sy + y) * SIZE + (sx + x)] = 1;
+        }
     }
 }
 
@@ -295,6 +314,25 @@ int main(int argc, char** argv)
     for (i = EC_COUNT - 1; i >= 0; i--) {
         writeToCode(codeGrid, &x, &y, ECCodewords[i], 8, NULL);
     }
+
+    
+    // ***** Function Patterns ***** //
+    
+    // Timing patterns
+    for (i = 8; i < SIZE - 8; i++) {
+        codeGrid[i * SIZE + 6] = ~i & 1;
+        codeGrid[6 * SIZE + i] = ~i & 1;
+    }
+
+    // Finder patterns
+    writeFinderPatternToCode(codeGrid, 0, 0);
+    writeFinderPatternToCode(codeGrid, SIZE - 7, 0);
+    writeFinderPatternToCode(codeGrid, 0, SIZE - 7);
+
+    // Dark module
+    codeGrid[(SIZE - 8) * SIZE + 8] = 1;
+
+    // Separators are not necessary since it is the default value
 
     displayCode(codeGrid, SIZE);
     drawCode(codeGrid, SIZE);
