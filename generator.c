@@ -13,7 +13,8 @@ const unsigned char ANTILOG_TABLE[256] = { 0, 0, 1, 25, 2, 50, 26, 198, 3, 223, 
 #define FORMAT_GEN_POLY 0b10100110111
 #define FORMAT_MASK 0b101010000010010
 
-#define SIZE 21             // We are using version 1
+// Using version 1-L
+#define SIZE 21
 #define DATA_COUNT 19
 #define EC_COUNT 7
 
@@ -206,10 +207,7 @@ void writeFinderPatternToCode(bool* code, const unsigned char x, const unsigned 
     for (sy = 0; sy < 7; sy++) {
         unsigned char sx;
         for (sx = 0; sx < 7; sx++) {
-            if (((sx == 1 || sx == 5) && (sy > 0 && sy < 6)) ||
-                ((sy == 1 || sy == 5) && (sx > 0 && sx < 6))) continue;
-
-            code[(sy + y) * SIZE + (sx + x)] = 1;
+            code[(sy + y) * SIZE + (sx + x)] = !(((sx == 1 || sx == 5) && (sy > 0 && sy < 6)) || ((sy == 1 || sy == 5) && (sx > 0 && sx < 6)));
         }
     }
 }
@@ -326,7 +324,15 @@ int main(int argc, char** argv)
 
     printf("\n");
 
+    int cy;
+    for (cy = 0; cy < SIZE; cy++) {
+        int cx;
+        for (cx = 0; cx < SIZE; cx++) {
+            codeGrid[cy * SIZE + cx] ^= (cy + cx) % 2 == 0;
+        }
+    }
     
+
     // ***** Function Patterns ***** //
     
     // Timing patterns
@@ -340,11 +346,21 @@ int main(int argc, char** argv)
     writeFinderPatternToCode(codeGrid, SIZE - 7, 0);
     writeFinderPatternToCode(codeGrid, 0, SIZE - 7);
 
+    // Separators
+    for (i = 0; i < 8; i++) {
+        // Top-Left
+        codeGrid[7 * SIZE + i] = 0;
+        codeGrid[i * SIZE + 7] = 0;
+        // Top-Right
+        codeGrid[7 * SIZE + SIZE - 8 + i] = 0;
+        codeGrid[i * SIZE + SIZE - 8] = 0;
+        // Bottom-Left
+        codeGrid[(SIZE - 8) * SIZE + i] = 0;
+        codeGrid[(SIZE - 8 + i) * SIZE + 7] = 0;
+    }    
+
     // Dark module
     codeGrid[(SIZE - 8) * SIZE + 8] = 1;
-
-    // Separators are not necessary since it is the default value
-
 
     // ***** Format information ***** //
     unsigned short formatInfo = 0; // The format information is 15 bits long, a short is enough, we just leave the MSB alone
@@ -391,7 +407,6 @@ int main(int argc, char** argv)
         }
     }
 
-    // TODO: Write this to the QR code
     // TODO: Test using all mask patterns to decide the best
     
 
