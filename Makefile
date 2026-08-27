@@ -1,6 +1,6 @@
 SRCS = qdbmp.c generator.c
 EXE = gen
-CFLAGS = -Wall
+CFLAGS = -Wall -g
 LD = gcc
 OBJS = qdbmp.o generator.o
 

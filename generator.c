@@ -5,8 +5,10 @@
 
 #include "qdbmp.h"
 
+// A2I
 const unsigned char LOG_TABLE[256] = { 1, 2, 4, 8, 16, 32, 64, 128, 29, 58, 116, 232, 205, 135, 19, 38, 76, 152, 45, 90, 180, 117, 234, 201, 143, 3, 6, 12, 24, 48, 96, 192, 157, 39, 78, 156, 37, 74, 148, 53, 106, 212, 181, 119, 238, 193, 159, 35, 70, 140, 5, 10, 20, 40, 80, 160, 93, 186, 105, 210, 185, 111, 222, 161, 95, 190, 97, 194, 153, 47, 94, 188, 101, 202, 137, 15, 30, 60, 120, 240, 253, 231, 211, 187, 107, 214, 177, 127, 254, 225, 223, 163, 91, 182, 113, 226, 217, 175, 67, 134, 17, 34, 68, 136, 13, 26, 52, 104, 208, 189, 103, 206, 129, 31, 62, 124, 248, 237, 199, 147, 59, 118, 236, 197, 151, 51, 102, 204, 133, 23, 46, 92, 184, 109, 218, 169, 79, 158, 33, 66, 132, 21, 42, 84, 168, 77, 154, 41, 82, 164, 85, 170, 73, 146, 57, 114, 228, 213, 183, 115, 230, 209, 191, 99, 198, 145, 63, 126, 252, 229, 215, 179, 123, 246, 241, 255, 227, 219, 171, 75, 150, 49, 98, 196, 149, 55, 110, 220, 165, 87, 174, 65, 130, 25, 50, 100, 200, 141, 7, 14, 28, 56, 112, 224, 221, 167, 83, 166, 81, 162, 89, 178, 121, 242, 249, 239, 195, 155, 43, 86, 172, 69, 138, 9, 18, 36, 72, 144, 61, 122, 244, 245, 247, 243, 251, 235, 203, 139, 11, 22, 44, 88, 176, 125, 250, 233, 207, 131, 27, 54, 108, 216, 173, 71, 142, 1 };
 
+// I2A
 // Index 0 shouldn't be used
 const unsigned char ANTILOG_TABLE[256] = { 0, 0, 1, 25, 2, 50, 26, 198, 3, 223, 51, 238, 27, 104, 199, 75, 4, 100, 224, 14, 52, 141, 239, 129, 28, 193, 105, 248, 200, 8, 76, 113, 5, 138, 101, 47, 225, 36, 15, 33, 53, 147, 142, 218, 240, 18, 130, 69, 29, 181, 194, 125, 106, 39, 249, 185, 201, 154, 9, 120, 77, 228, 114, 166, 6, 191, 139, 98, 102, 221, 48, 253, 226, 152, 37, 179, 16, 145, 34, 136, 54, 208, 148, 206, 143, 150, 219, 189, 241, 210, 19, 92, 131, 56, 70, 64, 30, 66, 182, 163, 195, 72, 126, 110, 107, 58, 40, 84, 250, 133, 186, 61, 202, 94, 155, 159, 10, 21, 121, 43, 78, 212, 229, 172, 115, 243, 167, 87, 7, 112, 192, 247, 140, 128, 99, 13, 103, 74, 222, 237, 49, 197, 254, 24, 227, 165, 153, 119, 38, 184, 180, 124, 17, 68, 146, 217, 35, 32, 137, 46, 55, 63, 209, 91, 149, 188, 207, 205, 144, 135, 151, 178, 220, 252, 190, 97, 242, 86, 211, 171, 20, 42, 93, 158, 132, 60, 57, 83, 71, 109, 65, 162, 31, 45, 67, 216, 183, 123, 164, 118, 196, 23, 73, 236, 127, 12, 111, 246, 108, 161, 59, 82, 41, 157, 85, 170, 251, 96, 134, 177, 187, 204, 62, 90, 203, 89, 95, 176, 156, 169, 160, 81, 11, 245, 22, 235, 122, 117, 44, 215, 79, 174, 213, 233, 230, 231, 173, 232, 116, 214, 244, 234, 168, 80, 88, 175 };
 
@@ -201,6 +203,108 @@ void int2alpha(unsigned char *array, const size_t size) {
     }
 }
 
+/// Computes the generator polynomial for the given number of terms
+/// We always start with the following polynomial: (a^0x^1 + a^0x^0) where a is alpha (c.f. alpha notation)
+/// For each step we multiply the current polynomial with the following polynomial: (a^0x^1 + a^ix^0) where i is the step going from 1 to count - 1 (inclusive)
+/// @param generatorPolynomial The array in which the generator polynomial will be stored, the value at index i indicates the coefficient for x^i using alpha notation
+// @param count The number of EC codewords, the generator polynomial will have one more term than that value
+void computeGeneratorPolynomial(unsigned char *generatorPolynomial, const unsigned char count) {
+    // Alpha notation
+    generatorPolynomial[0] = 0;
+    generatorPolynomial[1] = 0;
+
+    int i;
+    for (i = 1; i < count; i++) {
+        // It is needed to go from top to bottom so as to not make a copy of the array for the multiplication
+        int j;
+        for (j = i + 1; j >= 0; j--) {
+            // Alpha notation               // Coefficients:
+            unsigned short zeroTerm = 0;    // a^i
+            unsigned char  oneTerm  = 0;    // a^0
+
+            if (j != i + 1) {
+                zeroTerm = generatorPolynomial[j] + i;
+                if (zeroTerm > 255) zeroTerm = (zeroTerm % 256) + (zeroTerm / 256);
+                zeroTerm = LOG_TABLE[zeroTerm];
+            }
+            if (j != 0) {
+                oneTerm  = generatorPolynomial[j - 1];
+                oneTerm  = LOG_TABLE[oneTerm ];
+            }
+            // Integer notation
+
+            generatorPolynomial[j] = ANTILOG_TABLE[zeroTerm ^ oneTerm];
+            // Alpha notation
+        }
+    }
+}
+
+void debugArray(unsigned char* array, unsigned char size) {
+    int i;
+    for (i = 0; i < size; i++) {
+        printf("%d ", array[i]);
+    }
+    printf("\n");
+}
+
+/// Computes the EC Codewords for the given message by performing a polynomial long division between a polynomial generated based on the message and a generator polynomial, the remainder of this division contains all the EC codewords
+/// @param result A pointer to an array of size ECCount which will have its content replaced by the EC codewords
+/// @param ECCount The number of codewords for the EC
+/// @param messageCodewords The codewords for the message, the first part of the message is in the start of the array
+/// @param messageCodewordsCount The number of codewords for the message
+void getECCodewords(unsigned char *result, const unsigned char ECCount, const unsigned char *messageCodewords, const unsigned char messageCodewordsCount) {
+    unsigned char *dividend = (unsigned char *)malloc(messageCodewordsCount * sizeof(char));
+    if (dividend == NULL) return;
+    memcpy(dividend, messageCodewords, messageCodewordsCount);
+
+    // Allocate for both generator and generatorMultiplied
+    unsigned char *generator = (unsigned char*)malloc(2 * (ECCount + 1));
+    if (generator == NULL) {
+        free(dividend);
+        return;
+    }
+    computeGeneratorPolynomial(generator, ECCount);
+    unsigned char *generatorMultiplied = generator + ECCount + 1;
+
+    unsigned char termsCount = messageCodewordsCount;
+
+    int i, j;
+    for (i = 0; i < messageCodewordsCount; i++) {
+        debugArray(dividend, messageCodewordsCount);
+        
+        int2alpha(dividend, termsCount);
+
+        // Multiply the generator by the leading term of the remaining dividend
+        // Alpha notation simplifies multiplication
+        for (j = 0; j < ECCount + 1; j++) {
+            unsigned short a = generator[j] + dividend[0];
+            if (a > 255) a %= 255;
+            generatorMultiplied[j] = a;
+        }
+
+        alpha2int(dividend, termsCount);
+        alpha2int(generatorMultiplied, ECCount + 1);
+
+        // XOR the dividend with the resulting generator
+        // Integer notation needs to be used for the XOR to work
+        for (j = 0; j < termsCount; j++) {
+            dividend[j] = j + 1 < termsCount ? dividend[j + 1] : 0;
+            if (j < ECCount + 1) dividend[j] ^= generatorMultiplied[ECCount - j - 1];
+        }
+
+        termsCount = termsCount > ECCount ? termsCount - 1 : termsCount;
+    }
+
+    memcpy(result, dividend, ECCount);
+
+    free(dividend);
+    free(generator);
+}
+
+/// Adds a finder pattern to the code at given coordinates
+/// @param code A pointer to the code's grid being a 1D array
+/// @param x The top-left corner's x position to place the finder pattern on the grid
+/// @param y The top-left corner's y position to place the finder pattern on the grid
 void writeFinderPatternToCode(bool* code, const unsigned char x, const unsigned char y) {
     // Draw a 7x7 square but avoid the second inner shell
     unsigned char sy;
@@ -275,68 +379,15 @@ int main(int argc, char** argv)
 
     // The message codewords have been generated earlier, they are using integer notation
     // We need to use alpha notation using the antilog table for polynomial long division
-    unsigned char generator[EC_COUNT + 1] = { 21, 102, 238, 149, 146, 229, 87, 0 };
+    unsigned char generator[EC_COUNT + 1] = { 0 };
+    computeGeneratorPolynomial(generator, EC_COUNT);
 
+    unsigned char ECCodewords[EC_COUNT] = { 0 };
+    getECCodewords(ECCodewords, EC_COUNT, messageCodewords, DATA_COUNT);
 
-    // Next: divide the message polynomial by the generator polynomial to get EC codewords as the remainder of the division
-
-    unsigned char ECCodewords[DATA_COUNT] = { 0 }; // Starts at 19, finishes at 7
-
-    // Copy the message polynomial to ECCodewords and arranging the values so as to have the exponent corresponding to the index
-    printf("Message codewords: ");
-    for (i = 0; i < DATA_COUNT; i++) {
-        printf("%d ", messageCodewords[i]);
-        ECCodewords[i] = messageCodewords[DATA_COUNT - 1 - i];
-    }
-
-    printf("\n");
-
-    unsigned char termsCount = DATA_COUNT;
-
-    // Division steps:
-    // Dividend: Message; Divisor: Generator polynomial; Target: Remainder after n steps, where n is the number of data codewords, given by DATA_COUNT
-    // For each step, we multiply the generator polynomial (the base one every time, it doesn't get passed along steps) by the lead term (highest exponent) of the dividend
-    // XOR the multiplied generator polynomial with the dividend to get the remainder, the remainder becomes the new dividend for the next steps, in the last step, the remainder is composed of all EC codewords
-
-    // The number of steps should make the biggest exponent, 25 (c.f. few lines above) be the number of EC codewords minus 1, being 6 for 1-L
-    int j;
-    for (i = 0; i < DATA_COUNT; i++) {
-        /// Step A: Multiply the generator (G) by the lead term of the result from the previous step (P)
-        
-        // Convert P into alpha notation for easier multiplication
-        int2alpha(ECCodewords, termsCount);
-
-        unsigned char genMultiplied[EC_COUNT + 1] = { 0 };
-
-        // Multiply (G) by the lead term of (P) to get (M)
-        for (j = 0; j < EC_COUNT + 1; j++) {
-            unsigned short a = generator[j] + ECCodewords[termsCount - 1];
-            if (a > 255) a %= 255;
-            genMultiplied[j] = a;
-        }
-
-        // Convert back to integer notation
-        alpha2int(ECCodewords, termsCount);
-        alpha2int(genMultiplied, EC_COUNT + 1);
-
-        // Step B: (P) becomes (M) XOR (P)
-        for (j = EC_COUNT; j >= 0; j--) {
-            // We need to do it the other way around so that we can shift the value to the right and keep the amount of values the same
-            if (termsCount == EC_COUNT) {
-                ECCodewords[termsCount - EC_COUNT + j] = ECCodewords[termsCount - EC_COUNT - 1 + j] ^ genMultiplied[j];
-            }
-            else {
-                ECCodewords[termsCount - EC_COUNT - 1 + j] ^= genMultiplied[j];
-            }
-        }
-
-        termsCount = termsCount > EC_COUNT ? termsCount - 1 : termsCount;
-    }
-
-    printf("EC Codewords: ");
-    for (i = EC_COUNT - 1; i >= 0; i--) {
-        writeToCode(codeGrid, &x, &y, ECCodewords[i], 8, NULL);
+    for ( i = 0; i < EC_COUNT; i++) {
         printf("%d ", ECCodewords[i]);
+        writeToCode(codeGrid, &x, &y, ECCodewords[i], 8, NULL);
     }
 
     printf("\n");
