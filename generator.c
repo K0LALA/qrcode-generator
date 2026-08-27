@@ -288,43 +288,44 @@ int main(int argc, char** argv)
 
     unsigned char termsCount = DATA_COUNT;
 
+    // Division steps:
+    // Dividend: Message; Divisor: Generator polynomial; Target: Remainder after n steps, where n is the number of data codewords, given by DATA_COUNT
+    // For each step, we multiply the generator polynomial (the base one every time, it doesn't get passed along steps) by the lead term (highest exponent) of the dividend
+    // XOR the multiplied generator polynomial with the dividend to get the remainder, the remainder becomes the new dividend for the next steps, in the last step, the remainder is composed of all EC codewords
+
     // The number of steps should make the biggest exponent, 25 (c.f. few lines above) be the number of EC codewords minus 1, being 6 for 1-L
     for (i = 0; i < DATA_COUNT; i++) {
-        for (j = 0; j < DATA_COUNT; j++) {
-            printf("%d ", ECCodewords[j]);
-        }
-
-        printf("\n");
-        
         /// Step A: Multiply the generator (G) by the lead term of the result from the previous step (P)
         
         // Convert P into alpha notation for easier multiplication
-        int2alpha(ECCodewords, DATA_COUNT);
+        int2alpha(ECCodewords, termsCount);
 
         unsigned char genMultiplied[EC_COUNT + 1] = { 0 };
 
         // Multiply (G) by the lead term of (P) to get (M)
-        for (j = 0; j < termsCount; j++) {
+        for (j = 0; j < EC_COUNT + 1; j++) {
             unsigned short a = generator[j] + ECCodewords[termsCount - 1];
             if (a > 255) a %= 255;
             genMultiplied[j] = a;
         }
 
         // Convert back to integer notation
-        alpha2int(ECCodewords, DATA_COUNT);
+        alpha2int(ECCodewords, termsCount);
         alpha2int(genMultiplied, EC_COUNT + 1);
 
         // Step B: (P) becomes (M) XOR (P)
-        for (j = 0; j < termsCount; j++) {
-            ECCodewords[j] ^= genMultiplied[j];
+        for (j = EC_COUNT; j >= 0; j--) {
+            // We need to do it the other way around so that we can shift the value to the right and keep the amount of values the same
+            if (termsCount == EC_COUNT) {
+                ECCodewords[termsCount - EC_COUNT + j] = ECCodewords[termsCount - EC_COUNT - 1 + j] ^ genMultiplied[j];
+            }
+            else {
+                ECCodewords[termsCount - EC_COUNT - 1 + j] ^= genMultiplied[j];
+            }
         }
 
         termsCount = termsCount > EC_COUNT ? termsCount - 1 : termsCount;
     }
-
-
-    unsigned char new_ECCodewords[7] = {37, 143, 151, 6, 239, 173, 174};
-    memcpy(ECCodewords, new_ECCodewords, 7);
 
     printf("EC Codewords: ");
     for (i = EC_COUNT - 1; i >= 0; i--) {
