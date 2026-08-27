@@ -226,7 +226,7 @@ int main(int argc, char** argv)
     }
     else
     {
-        message = "www.wikipedia.org";
+        message = "github.com/K0LALA";
     }
 
     int x = SIZE - 1;
