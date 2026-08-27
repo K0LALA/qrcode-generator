@@ -290,6 +290,12 @@ int main(int argc, char** argv)
 
     // The number of steps should make the biggest exponent, 25 (c.f. few lines above) be the number of EC codewords minus 1, being 6 for 1-L
     for (i = 0; i < DATA_COUNT; i++) {
+        for (j = 0; j < DATA_COUNT; j++) {
+            printf("%d ", ECCodewords[j]);
+        }
+
+        printf("\n");
+        
         /// Step A: Multiply the generator (G) by the lead term of the result from the previous step (P)
         
         // Convert P into alpha notation for easier multiplication
@@ -298,7 +304,7 @@ int main(int argc, char** argv)
         unsigned char genMultiplied[EC_COUNT + 1] = { 0 };
 
         // Multiply (G) by the lead term of (P) to get (M)
-        for (j = 0; j < EC_COUNT + 1; j++) {
+        for (j = 0; j < termsCount; j++) {
             unsigned short a = generator[j] + ECCodewords[termsCount - 1];
             if (a > 255) a %= 255;
             genMultiplied[j] = a;
@@ -309,12 +315,16 @@ int main(int argc, char** argv)
         alpha2int(genMultiplied, EC_COUNT + 1);
 
         // Step B: (P) becomes (M) XOR (P)
-        for (j = 0; j < EC_COUNT + 1; j++) {
+        for (j = 0; j < termsCount; j++) {
             ECCodewords[j] ^= genMultiplied[j];
         }
 
         termsCount = termsCount > EC_COUNT ? termsCount - 1 : termsCount;
     }
+
+
+    unsigned char new_ECCodewords[7] = {37, 143, 151, 6, 239, 173, 174};
+    memcpy(ECCodewords, new_ECCodewords, 7);
 
     printf("EC Codewords: ");
     for (i = EC_COUNT - 1; i >= 0; i--) {
@@ -390,7 +400,7 @@ int main(int argc, char** argv)
         formatCopy ^= generatorPolynomial;
     }
 
-    formatInfo |= (formatCopy << 1);
+    formatInfo |= formatCopy;
 
     formatInfo ^= FORMAT_MASK;
 
