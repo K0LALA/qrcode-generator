@@ -148,18 +148,18 @@ bool writeToCode(bool* code, int *startX, int *startY, const unsigned char conte
     return isFinished;
 }
 
-void displayCode(const bool* code, const int size)
-{
-    printf("Qr-Code:\n");
+void displayCode(const bool* code, const int size) {
+    printf("QR-Code: \n");
     int y;
-    for (y = 0; y < size; y++)
-    {
+    for (y = -2; y < size + 2; y++) {
         int x;
-        for (x = 0; x < size; x++)
-        {
-            printf(code[y * size + x] ? "#" : " ");
+        for (x = -2; x < size + 2; x++) {
+            bool black = (y >= 0 && y < size && x >= 0 && x < size && code[y * size + x]);
+            if (black) printf("\033[30m");
+            printf("██");
+            if (black) printf("\033[0m");
         }
-        printf("|\n");
+        printf("\n");
     }
 }
 
