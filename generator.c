@@ -151,9 +151,9 @@ bool writeToCode(bool* code, int *startX, int *startY, const unsigned char conte
 void displayCode(const bool* code, const int size) {
     printf("QR-Code: \n");
     int y;
-    for (y = -2; y < size + 2; y++) {
+    for (y = -4; y < size + 4; y++) {
         int x;
-        for (x = -2; x < size + 2; x++) {
+        for (x = -4; x < size + 4; x++) {
             bool black = (y >= 0 && y < size && x >= 0 && x < size && code[y * size + x]);
             if (black) printf("\033[30m");
             printf("██");
@@ -248,7 +248,13 @@ int main(int argc, char** argv)
     // TODO: Compute actual required size for the terminator
     writeToCode(codeGrid, &x,&y, 0, 4, messageCodewords);
 
-    // TODO: Add padding to the end of the string if necessary
+    // Padding
+    unsigned char paddingCount = 19 - 2 - messageLength;
+
+    int i;
+    for (i = 0; i < paddingCount; i++) {
+        writeToCode(codeGrid, &x, &y, i & 1 ? 0b00010001 : 0b11101100, 8, messageCodewords);
+    }
 
     unsigned char errorCorrectionLevel = 0b01;  // Low
     
@@ -278,7 +284,6 @@ int main(int argc, char** argv)
 
     // Copy the message polynomial to ECCodewords and arranging the values so as to have the exponent corresponding to the index
     printf("Message codewords: ");
-    int i, j;
     for (i = 0; i < DATA_COUNT; i++) {
         printf("%d ", messageCodewords[i]);
         ECCodewords[i] = messageCodewords[DATA_COUNT - 1 - i];
@@ -294,6 +299,7 @@ int main(int argc, char** argv)
     // XOR the multiplied generator polynomial with the dividend to get the remainder, the remainder becomes the new dividend for the next steps, in the last step, the remainder is composed of all EC codewords
 
     // The number of steps should make the biggest exponent, 25 (c.f. few lines above) be the number of EC codewords minus 1, being 6 for 1-L
+    int j;
     for (i = 0; i < DATA_COUNT; i++) {
         /// Step A: Multiply the generator (G) by the lead term of the result from the previous step (P)
         
