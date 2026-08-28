@@ -316,6 +316,60 @@ void writeFinderPatternToCode(bool* code, const unsigned char x, const unsigned 
     }
 }
 
+bool mask0(const unsigned char x, const unsigned char y) { return (y + x) % 2 == 0; }
+bool mask1(const unsigned char x, const unsigned char y) { return y % 2 == 0; }
+bool mask2(const unsigned char x, const unsigned char y) { return x % 3 == 0; }
+bool mask3(const unsigned char x, const unsigned char y) { return (y + x) % 3 == 0; }
+bool mask4(const unsigned char x, const unsigned char y) { return (y/2 + x/3) % 2 == 0; }
+bool mask5(const unsigned char x, const unsigned char y) { return (y * x) % 2 + (y * x) % 3 == 0; }
+bool mask6(const unsigned char x, const unsigned char y) { return ((y * x) % 2 + (y * x) % 3) % 2 == 0; }
+bool mask7(const unsigned char x, const unsigned char y) { return ((y + x) % 2 + (y * x) % 3) % 2 == 0; }
+
+bool (*getMaskPattern(unsigned char mask))(const unsigned char, const unsigned char) {
+    switch (mask) {
+    case 0:
+        return mask0;
+    case 1:
+        return mask1;
+    case 2:
+        return mask2;
+    case 3:
+        return mask3;
+    case 4:
+        return mask4;
+    case 5:
+        return mask5;
+    case 6:
+        return mask6;
+    case 7:
+        return mask7;
+    default:
+        return NULL;
+    }
+}
+
+void applyMask(bool *code, unsigned char mask) {
+    bool (*maskPattern)(const unsigned char, const unsigned char) = getMaskPattern(mask);
+
+    int y;
+    for (y = 0; y < SIZE; y++) {
+        int x;
+        for (x = 0; x < SIZE; x++) {
+            code[y * SIZE + x] ^= (*maskPattern)(x, y);
+        }
+    }
+}
+
+/// Tests all masks to choose the best
+/// @param code The QR-Code's grid, will be modified with the best suiting mask
+/// @param ECLevel The error correction level used
+void useBestMask(bool *code, const unsigned char ECLevel) {
+    // For each mask, apply the mask, add version information and function patterns
+    // Evaluate the mask, compare with minimum
+
+    // In the end, get the most efficient mask and apply it to the code
+}
+
 int main(int argc, char** argv)
 {
     bool codeGrid[SIZE*SIZE] = { 0 };
@@ -362,23 +416,6 @@ int main(int argc, char** argv)
 
     unsigned char errorCorrectionLevel = 0b01;  // Low
     
-    // Since we are using version 1 it is not needed to split data codewords in 2 groups
-    // There are 7 EC codewords per block, and we have only 1 block for 1 group
-    // Generator polynomial:
-    // a^0x^7 + a^87x^6 + a^229x^5 + a^146x^4 + a^149x^3 + a^238x^2 + a^102x + a^21
-    // Message polynomial is using decimal values for each data codeword as coefficient for each term
-    // The first characters are the most significant, with 18 as the biggest exponent
-    // We now need to divide the message polynomial by the generator polynomial
-
-    // Polynomial division for Galois Field GF(256):
-    // Multiply the message poly by x^n where n is the number of EC codewords (7 for 1-L, making 25 be largest exponent)
-    // The lead term of the generator poly should have the exponent as the message poly
-    // Hence multiply the gen poly by x^18 for 1-L
-    
-    // We will store the 2 polynomials as 2 arrays where value with index i is multiplied by x^i in the polynomial
-
-    // The message codewords have been generated earlier, they are using integer notation
-    // We need to use alpha notation using the antilog table for polynomial long division
     unsigned char generator[EC_COUNT + 1] = { 0 };
     computeGeneratorPolynomial(generator, EC_COUNT);
 
@@ -392,15 +429,9 @@ int main(int argc, char** argv)
 
     printf("\n");
 
-    int cy;
-    for (cy = 0; cy < SIZE; cy++) {
-        int cx;
-        for (cx = 0; cx < SIZE; cx++) {
-            codeGrid[cy * SIZE + cx] ^= (cy + cx) % 2 == 0;
-        }
-    }
+    // Masking
+    applyMask(codeGrid, 0);
     
-
     // ***** Function Patterns ***** //
     
     // Timing patterns
