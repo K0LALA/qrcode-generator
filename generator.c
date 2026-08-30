@@ -15,6 +15,11 @@ const unsigned char ANTILOG_TABLE[256] = { 0, 0, 1, 25, 2, 50, 26, 198, 3, 223, 
 #define FORMAT_GEN_POLY 0b10100110111
 #define FORMAT_MASK 0b101010000010010
 
+#define FINDER_PATTERN_LOOKALIKE 0b10111010000
+#define FINDER_PATTERN_LOOKALIKE_SIZE 11
+const unsigned char finderPatternSkipCount[FINDER_PATTERN_LOOKALIKE_SIZE] = {1, 2, 6, 4, 3, 5, 11, 4, 4, 9, 10};
+const unsigned char finderPatternSkipCountReversed[FINDER_PATTERN_LOOKALIKE_SIZE] = {4, 3, 2, 1, 11, 11, 6, 7, 8, 11, 10};
+
 // Using version 1-L
 #define SIZE 21
 #define DATA_COUNT 19
@@ -270,8 +275,6 @@ void getECCodewords(unsigned char *result, const unsigned char ECCount, const un
 
     int i, j;
     for (i = 0; i < messageCodewordsCount; i++) {
-        debugArray(dividend, messageCodewordsCount);
-        
         int2alpha(dividend, termsCount);
 
         // Multiply the generator by the leading term of the remaining dividend
@@ -316,6 +319,91 @@ void writeFinderPatternToCode(bool* code, const unsigned char x, const unsigned 
     }
 }
 
+void addFunctionPatterns(bool* code) {
+    // Timing patterns
+    int i;
+    for (i = 8; i < SIZE - 8; i++) {
+        code[i * SIZE + 6] = ~i & 1;
+        code[6 * SIZE + i] = ~i & 1;
+    }
+
+    // Finder patterns
+    writeFinderPatternToCode(code, 0, 0);
+    writeFinderPatternToCode(code, SIZE - 7, 0);
+    writeFinderPatternToCode(code, 0, SIZE - 7);
+
+    // Separators
+    for (i = 0; i < 8; i++) {
+        // Top-Left
+        code[7 * SIZE + i] = 0;
+        code[i * SIZE + 7] = 0;
+        // Top-Right
+        code[7 * SIZE + SIZE - 8 + i] = 0;
+        code[i * SIZE + SIZE - 8]     = 0;
+        // Bottom-Left
+        code[(SIZE - 8) * SIZE + i]     = 0;
+        code[(SIZE - 8 + i) * SIZE + 7] = 0;
+    }
+
+    // Dark module
+    code[(SIZE - 8) * SIZE + 8] = 1;
+}
+
+/// Computes the whole 15-bits format information with error correction
+/// @param ECLevel The error correction level using the 2 LSB
+/// @param mask The mask pattern used, using the 3 LSB
+/// @return The format information using 15-bits out of 16, the MSB is not used
+unsigned short computeFormatInfoEC(const unsigned char ECLevel, const unsigned char mask) {
+    unsigned short formatInfo = 0;
+
+    formatInfo |= ECLevel << 13;
+    formatInfo |= mask << 10;
+
+    unsigned short formatEC = formatInfo;
+    unsigned short generatorPolynomial;
+    unsigned char length = 15;
+    
+    for (;;) {
+        while (~formatEC & (1 << (length - 1))) length--;
+
+        if (length <= 10) break;
+
+        generatorPolynomial = FORMAT_GEN_POLY << (length - 11);
+
+        formatEC ^= generatorPolynomial;
+    }
+
+    formatInfo |= formatEC;
+    formatInfo ^= FORMAT_MASK;
+
+    return formatInfo;
+}
+
+/// Adds complete format information to the code
+/// @param code The QR-Code
+/// @param ECLevel The error correction level for the data, in the 2 LSB
+/// @param mask The mask used for the data, in the 3 LSB
+/// @return The 15 bits of format information, the MSB is left to 0 and not used
+unsigned short addFormatInfo(bool *code, const unsigned char ECLevel, const unsigned char mask) {
+    unsigned short formatInfo = computeFormatInfoEC(ECLevel, mask);
+
+    bool value;
+    int i;
+    for (i = 0; i < 15; i++) {
+        value = formatInfo & (1 << (14 - i));
+        if (i < 7) {
+            code[8 * SIZE + i + (i > 5)]        = value;
+            code[(SIZE - i - 1) * SIZE + 8]     = value;
+        }
+        else {
+            code[(15 - i - (i > 8)) * SIZE + 8] = value;
+            code[8 * SIZE + SIZE - 8 + i - 7]   = value;
+        }
+    }
+
+    return formatInfo;
+}
+
 bool mask0(const unsigned char x, const unsigned char y) { return (y + x) % 2 == 0; }
 bool mask1(const unsigned char x, const unsigned char y) { return y % 2 == 0; }
 bool mask2(const unsigned char x, const unsigned char y) { return x % 3 == 0; }
@@ -325,6 +413,9 @@ bool mask5(const unsigned char x, const unsigned char y) { return (y * x) % 2 + 
 bool mask6(const unsigned char x, const unsigned char y) { return ((y * x) % 2 + (y * x) % 3) % 2 == 0; }
 bool mask7(const unsigned char x, const unsigned char y) { return ((y + x) % 2 + (y * x) % 3) % 2 == 0; }
 
+/// Returns the function for the adequate pattern depending on the position
+/// @param mask The index of the mask to use
+/// @return A pointer to the mask's function, it has 2 parameters for the coordinates and outputs a bool, 1 if the value at said coordinates needs to be changed, 0 otherwise
 bool (*getMaskPattern(unsigned char mask))(const unsigned char, const unsigned char) {
     switch (mask) {
     case 0:
@@ -348,6 +439,9 @@ bool (*getMaskPattern(unsigned char mask))(const unsigned char, const unsigned c
     }
 }
 
+/// Applies the specified mask to the code's data
+/// @param code The QR-Code
+/// @param mask The index of the mask to use
 void applyMask(bool *code, unsigned char mask) {
     bool (*maskPattern)(const unsigned char, const unsigned char) = getMaskPattern(mask);
 
@@ -360,14 +454,204 @@ void applyMask(bool *code, unsigned char mask) {
     }
 }
 
+/// Evaluates the code according to the first rule
+/// Looping through each row and column, add a penalty for each group of give or more modules of the same color
+/// @param code The QR-Code, not changed
+/// @return The penalty for this rule
+unsigned int evaluateConsecutiveModules(const bool *code) {
+    unsigned int penalty = 0;
+
+    unsigned char sameModuleCount;
+    bool lastModule;
+
+    int x,y;
+    for (y = 0; y < SIZE; y++) {
+        sameModuleCount = 1;
+        lastModule = code[y * SIZE];
+        for (x = 1; x < SIZE; x++) {
+            if (code[y * SIZE + x] == lastModule) sameModuleCount++;
+            else {
+                lastModule = !lastModule;
+                if (sameModuleCount >= 5) penalty += sameModuleCount - 2;
+                sameModuleCount = 1;
+            }
+        }
+    }
+
+    for (x = 0; x < SIZE; x++) {
+        sameModuleCount = 1;
+        lastModule = code[x];
+        for (y = 1; y < SIZE; y++) {
+            if (code[y * SIZE + x] == lastModule) sameModuleCount++;
+            else {
+                lastModule = !lastModule;
+                if (sameModuleCount >= 5) penalty += sameModuleCount - 2;
+                sameModuleCount = 1;
+            }
+        }
+    }
+
+    return penalty;
+}
+
+/// Evaluates the code according to the second rule
+/// Add a penalty for any 2x2 square of the same color
+/// @param code The QR-Code, not changed
+/// @return The penalty for this rule
+unsigned int evaluateSquareModules(const bool* code) {
+    unsigned int penalty = 0;
+    
+    int x,y;
+    for (y = 1; y < SIZE; y++) {
+        for (x = 1; x < SIZE; x++) {
+            bool v = code[y * SIZE + x];
+            if (v == code[(y - 1) * SIZE + x] && v == code[y * SIZE + x - 1] && v == code[(y - 1) * SIZE + x - 1]) penalty += 3;
+        }
+    }
+
+    return penalty;
+}
+
+/// Checks if either finder pattern look-alike is located at the pointed coordinates
+/// @param code The QR-Code, not changed
+/// @param x The x-coordinate of the starting position for the look-alike
+/// @param y The y-coordinate of the starting position for the look-alike
+/// @param isHorizontal Whether to check for position horizontally (true) or vertically (false)
+/// @return The amount to shift x or y in order to find the next possible position, 0 if look-alike was found
+unsigned char checkFinderLookAlike(const bool *code, unsigned char x, unsigned char y, bool isHorizontal) {
+    unsigned char notReversed = FINDER_PATTERN_LOOKALIKE_SIZE;
+    unsigned char reversed = FINDER_PATTERN_LOOKALIKE_SIZE;
+    
+    int i;
+    for (i = 0; i < FINDER_PATTERN_LOOKALIKE_SIZE; i++) {
+        const bool value = code[y * SIZE + x];
+        if (notReversed == FINDER_PATTERN_LOOKALIKE_SIZE && value != (FINDER_PATTERN_LOOKALIKE & (1 << (FINDER_PATTERN_LOOKALIKE_SIZE - 1 - i)))) notReversed = i;
+       if (reversed == FINDER_PATTERN_LOOKALIKE_SIZE && value != (FINDER_PATTERN_LOOKALIKE &  (1 << i))) reversed = i;
+
+       if (isHorizontal) x++;
+       else              y++;
+    }
+
+    if (reversed == FINDER_PATTERN_LOOKALIKE_SIZE || notReversed == FINDER_PATTERN_LOOKALIKE_SIZE) return 0;
+    unsigned char skipCount = finderPatternSkipCount[notReversed];
+    unsigned char skipCountReversed = finderPatternSkipCountReversed[reversed];
+    return skipCount < skipCountReversed ? skipCount : skipCountReversed;
+}
+
+/// Evaluates the code according to the third rule
+/// Add a penalty if there are patterns that look similar to the finder patterns
+/// @param code The QR-Code, not changed
+/// @return The penalty for this rule
+unsigned int evaluateFinderPatternsLookAlike(const bool* code) {
+    unsigned int penalty = 0;
+
+    int x, y;
+    for (y = 0; y < SIZE; y++) {
+        x = SIZE - FINDER_PATTERN_LOOKALIKE_SIZE;
+        while (x >= 0) {
+            unsigned char skipCount = checkFinderLookAlike(code, x, y, true);
+            if (skipCount == 0) {
+                penalty += 40; 
+                x -= 11;
+                continue;
+            }
+
+            x -= skipCount;
+        }
+    }
+
+    for (x = 0; x < SIZE; x++) {
+        y = SIZE - FINDER_PATTERN_LOOKALIKE_SIZE;
+        while (y >= 0) {
+            unsigned char skipCount = checkFinderLookAlike(code, x, y, false);
+            if (skipCount == 0) {
+                penalty += 40;
+                y -= 11;
+                continue;
+            }
+
+            y -= skipCount;
+        }
+    }
+
+    return penalty;
+}
+
+/// Evaluates the code according to the fourth rule
+/// If there are more or less black modules than white
+/// @param code The QR-Code, not changed
+/// @return The penalty for this rule
+unsigned int evaluateNotBalanced(const bool *code) {
+    unsigned int penalty = 0;
+
+    unsigned int moduleCount = SIZE * SIZE;
+    unsigned int darkModuleCount = 0;
+
+    int x, y;
+    for (y = 0; y < SIZE; y++) {
+        for (x = 0; x < SIZE; x++) {
+            darkModuleCount += code[y * SIZE + x];
+        }
+    }
+
+    unsigned int lowProportion = darkModuleCount * 20 / moduleCount;
+    unsigned int highProportion = lowProportion + 1;
+    lowProportion = abs(lowProportion - 10);
+    highProportion = abs(highProportion - 10);
+
+    penalty += 10 * (lowProportion < highProportion ? lowProportion : highProportion);
+
+    return penalty;
+}
+
 /// Tests all masks to choose the best
-/// @param code The QR-Code's grid, will be modified with the best suiting mask
+/// @param code The QR-Code's grid, will be modified with the best suiting mask, function patterns are not included
 /// @param ECLevel The error correction level used
-void useBestMask(bool *code, const unsigned char ECLevel) {
+/// @return The best mask used
+unsigned char useBestMask(bool *code, const unsigned char ECLevel) {
     // For each mask, apply the mask, add version information and function patterns
     // Evaluate the mask, compare with minimum
+    unsigned int lowestPenalty = -1;
+    unsigned char lowestMask = 0;
+
+    const size_t codeSize = sizeof(bool) * SIZE * SIZE;
+    bool *copy = (bool*)malloc(codeSize);
+
+    displayCode(code, SIZE);
+
+    int mask;
+    for (mask = 0; mask < 8; mask++) {
+        memcpy(copy, code, codeSize);
+
+        applyMask(copy, mask);
+        addFunctionPatterns(copy);
+        unsigned short formatString = addFormatInfo(copy, ECLevel, mask);
+
+        int i;
+        for (i = 14; i >= 0; i--) {
+            printf("%d", (bool) (formatString & (1 << i)));
+        }
+        printf("\n");
+
+        displayCode(copy, SIZE);
+
+        unsigned int penalty = evaluateConsecutiveModules(copy)
+                             + evaluateSquareModules(copy)
+                             + evaluateFinderPatternsLookAlike(copy)
+                             + evaluateNotBalanced(copy);
+        
+        printf("%u\n", penalty);
+
+        if (penalty < lowestPenalty) {
+            lowestPenalty = penalty;
+            lowestMask = mask;
+        }
+    }
 
     // In the end, get the most efficient mask and apply it to the code
+    applyMask(code, lowestMask);
+
+    return lowestMask;
 }
 
 int main(int argc, char** argv)
@@ -423,91 +707,19 @@ int main(int argc, char** argv)
     getECCodewords(ECCodewords, EC_COUNT, messageCodewords, DATA_COUNT);
 
     for ( i = 0; i < EC_COUNT; i++) {
-        printf("%d ", ECCodewords[i]);
         writeToCode(codeGrid, &x, &y, ECCodewords[i], 8, NULL);
     }
 
     printf("\n");
 
     // Masking
-    applyMask(codeGrid, 0);
+    unsigned char mask = useBestMask(codeGrid, errorCorrectionLevel);
     
-    // ***** Function Patterns ***** //
-    
-    // Timing patterns
-    for (i = 8; i < SIZE - 8; i++) {
-        codeGrid[i * SIZE + 6] = ~i & 1;
-        codeGrid[6 * SIZE + i] = ~i & 1;
-    }
+    // Function Patterns
+    addFunctionPatterns(codeGrid);
 
-    // Finder patterns
-    writeFinderPatternToCode(codeGrid, 0, 0);
-    writeFinderPatternToCode(codeGrid, SIZE - 7, 0);
-    writeFinderPatternToCode(codeGrid, 0, SIZE - 7);
-
-    // Separators
-    for (i = 0; i < 8; i++) {
-        // Top-Left
-        codeGrid[7 * SIZE + i] = 0;
-        codeGrid[i * SIZE + 7] = 0;
-        // Top-Right
-        codeGrid[7 * SIZE + SIZE - 8 + i] = 0;
-        codeGrid[i * SIZE + SIZE - 8] = 0;
-        // Bottom-Left
-        codeGrid[(SIZE - 8) * SIZE + i] = 0;
-        codeGrid[(SIZE - 8 + i) * SIZE + 7] = 0;
-    }    
-
-    // Dark module
-    codeGrid[(SIZE - 8) * SIZE + 8] = 1;
-
-    // ***** Format information ***** //
-    unsigned short formatInfo = 0; // The format information is 15 bits long, a short is enough, we just leave the MSB alone
-                                   // The error correction bits are placed near the LSB while the format information are near the MSB
-
-    formatInfo |= errorCorrectionLevel << 13;
-    unsigned char maskPattern = 0b000;
-    formatInfo |= maskPattern << 11;
-
-    unsigned short formatCopy = formatInfo;
-
-    // Compute error correction bits
-    unsigned short generatorPolynomial;
-
-    unsigned char length = 15;
-
-    for (;;) {
-
-        while (~formatCopy & (1 << (length - 1))) length--;
-
-        if (length <= 10) break;
-
-        // Pad the gen poly on the right with 0s to make it the same length as the format string
-        generatorPolynomial = FORMAT_GEN_POLY << (length - 11);
-
-        // XOR the padded generator polynomial with the current format bits
-        formatCopy ^= generatorPolynomial;
-    }
-
-    formatInfo |= formatCopy;
-
-    formatInfo ^= FORMAT_MASK;
-
-    bool value;
-    for (i = 0; i < 15; i++) {
-        value = formatInfo & (1 << (14 - i)); 
-        if (i < 7) {
-            codeGrid[8 * SIZE + i + (i > 5)]        = value;
-            codeGrid[(SIZE - i - 1) * SIZE + 8]     = value;
-        }
-        else {
-            codeGrid[(15 - i - (i > 8)) * SIZE + 8] = value;
-            codeGrid[8 * SIZE + SIZE - 8 + i - 7]   = value;
-        }
-    }
-
-    // TODO: Test using all mask patterns to decide the best
-    
+    // Format Information
+    addFormatInfo(codeGrid, errorCorrectionLevel, mask);
 
     displayCode(codeGrid, SIZE);
     drawCode(codeGrid, SIZE);
