@@ -162,7 +162,7 @@ void displayCode(const bool* code, const int size) {
         int x;
         for (x = -4; x < size + 4; x++) {
             bool black = (y >= 0 && y < size && x >= 0 && x < size && code[y * size + x]);
-            if (black) printf("\033[30m");
+            if (black) printf("\033[38;5;16m");
             printf("██");
             if (black) printf("\033[0m");
         }
