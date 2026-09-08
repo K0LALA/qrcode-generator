@@ -1,23 +1,51 @@
-SRCS = qdbmp.c generator.c
-EXE = gen
-CFLAGS = -Wall -g
+BUILD_DIR := build
+SRCS := generator.c qdbmp.c
+OBJS := $(addprefix $(BUILD_DIR)/, $(patsubst %.c,%.o,$(SRCS)))
+DEPS := $(addprefix $(BUILD_DIR)/, $(patsubst %.c,%.d,$(SRCS)))
+EXE = $(BUILD_DIR)/gen
 LD = gcc
-OBJS = qdbmp.o generator.o
+CFLAGS = -Wall -Wextra
+COMPILE_OPTS = -MMD -MP -c
 
-default: compile
+TEST_DIR := $(BUILD_DIR)/test
+TEST_SRCS = qdbmp.c generator.c test.c
+TEST_OBJS = $(addprefix $(TEST_DIR)/, $(patsubst %.c,%.o,$(TEST_SRCS)))
+TEST_DEPS = $(addprefix $(TEST_DIR)/, $(patsubst %.c,%.o,$(TEST_SRCS)))
+TEST_EXE = $(TEST_DIR)/test
 
-compile: $(EXE)
+.PHONY: debug
+debug: C_FLAGS += -g
+debug: $(EXE)
+
+$(BUILD_DIR)/.:
+	mkdir -p $(BUILD_DIR)
 
 $(EXE): $(OBJS)
-	$(LD) $(OBJS) -o $(EXE)
+	$(LD) $(CFLAGS) $^ -o $@
+	ln -frsT $@ $(notdir $@)
 
-qdbmp.o: qdbmp.c
-	$(LD) -c $(CFLAGS) qdbmp.c
+.SECONDEXPANSION:
+$(BUILD_DIR)/%.o: %.c | $$(@D)/.
+	$(LD) $(COMPILE_OPTS) $< -o $@
 
-generator.o: generator.c
-	$(LD) -c $(CFLAGS) generator.c
+.PHONY: testing
+testing: CFLAGS += -g
+testing: $(TEST_EXE)
 
+$(TEST_DIR)/.:
+	mkdir -p $(TEST_DIR)/
+
+$(TEST_EXE): $(TEST_OBJS)
+	$(LD) $(CFLAGS) $^ -o $@
+	ln -frsT $@ $(notdir $@)
+
+.SECONDEXPANSION:
+$(TEST_DIR)/%.o: %.c | $$(@D)/.
+	$(LD) $(COMPILE_OPTS) $< -o $@
+
+.PHONY: clean
 clean:
-	-rm -f $(EXE)
-	-rm -f $(OBJS)
+	-rm -rf $(BUILD_DIR)/ $(notdir $(EXE)) $(notdir $(TEST_EXE))
 
+-include DEPS
+-include TEST_DEPS

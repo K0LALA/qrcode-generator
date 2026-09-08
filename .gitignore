@@ -2,3 +2,5 @@ gen
 log_gen
 *.swp
 *.o
+build/**
+
