@@ -4,3 +4,4 @@ log_gen
 *.o
 build/**
 
+qr.bmp
