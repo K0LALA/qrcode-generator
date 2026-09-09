@@ -1,7 +1,10 @@
-gen
-log_gen
-*.swp
-*.o
 build/**
 
+gen
+log_gen
+test
+
 qr.bmp
+
+*.swp
+

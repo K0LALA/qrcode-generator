@@ -8,7 +8,9 @@ int main (int argc, char **argv) {
         return MISSING_DATA;
     }
 
-    getCodeSizeFromMessage(message, &x, &y);
+    QrCode code;
+
+    getCodeSizeFromMessage(message, &code);
 
     // TODO: Use QrCode struct for all functions in generator.c
     // TODO: Investigate, last run was not showing data on the code, only masking, format info and function patterns

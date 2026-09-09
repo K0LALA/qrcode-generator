@@ -1,11 +1,22 @@
 #include "generator.h"
 
-bool isAfterVerticalTimingPattern(unsigned char x)
+const unsigned char finderPatternSkipCount[FINDER_PATTERN_LOOKALIKE_SIZE] = { 1, 2, 6, 4, 3, 5, 11, 4, 4, 9, 10 };
+const unsigned char finderPatternSkipCountReversed[FINDER_PATTERN_LOOKALIKE_SIZE] = { 4, 3, 2, 1, 11, 11, 6, 7, 8, 11, 10 };
+
+// Alpha2Int
+const unsigned char LOG_TABLE[256] = { 1, 2, 4, 8, 16, 32, 64, 128, 29, 58, 116, 232, 205, 135, 19, 38, 76, 152, 45, 90, 180, 117, 234, 201, 143, 3, 6, 12, 24, 48, 96, 192, 157, 39, 78, 156, 37, 74, 148, 53, 106, 212, 181, 119, 238, 193, 159, 35, 70, 140, 5, 10, 20, 40, 80, 160, 93, 186, 105, 210, 185, 111, 222, 161, 95, 190, 97, 194, 153, 47, 94, 188, 101, 202, 137, 15, 30, 60, 120, 240, 253, 231, 211, 187, 107, 214, 177, 127, 254, 225, 223, 163, 91, 182, 113, 226, 217, 175, 67, 134, 17, 34, 68, 136, 13, 26, 52, 104, 208, 189, 103, 206, 129, 31, 62, 124, 248, 237, 199, 147, 59, 118, 236, 197, 151, 51, 102, 204, 133, 23, 46, 92, 184, 109, 218, 169, 79, 158, 33, 66, 132, 21, 42, 84, 168, 77, 154, 41, 82, 164, 85, 170, 73, 146, 57, 114, 228, 213, 183, 115, 230, 209, 191, 99, 198, 145, 63, 126, 252, 229, 215, 179, 123, 246, 241, 255, 227, 219, 171, 75, 150, 49, 98, 196, 149, 55, 110, 220, 165, 87, 174, 65, 130, 25, 50, 100, 200, 141, 7, 14, 28, 56, 112, 224, 221, 167, 83, 166, 81, 162, 89, 178, 121, 242, 249, 239, 195, 155, 43, 86, 172, 69, 138, 9, 18, 36, 72, 144, 61, 122, 244, 245, 247, 243, 251, 235, 203, 139, 11, 22, 44, 88, 176, 125, 250, 233, 207, 131, 27, 54, 108, 216, 173, 71, 142, 1 };
+
+// Int2Alpha
+// Index 0 should not be used
+const unsigned char ANTILOG_TABLE[256] = { 0, 0, 1, 25, 2, 50, 26, 198, 3, 223, 51, 238, 27, 104, 199, 75, 4, 100, 224, 14, 52, 141, 239, 129, 28, 193, 105, 248, 200, 8, 76, 113, 5, 138, 101, 47, 225, 36, 15, 33, 53, 147, 142, 218, 240, 18, 130, 69, 29, 181, 194, 125, 106, 39, 249, 185, 201, 154, 9, 120, 77, 228, 114, 166, 6, 191, 139, 98, 102, 221, 48, 253, 226, 152, 37, 179, 16, 145, 34, 136, 54, 208, 148, 206, 143, 150, 219, 189, 241, 210, 19, 92, 131, 56, 70, 64, 30, 66, 182, 163, 195, 72, 126, 110, 107, 58, 40, 84, 250, 133, 186, 61, 202, 94, 155, 159, 10, 21, 121, 43, 78, 212, 229, 172, 115, 243, 167, 87, 7, 112, 192, 247, 140, 128, 99, 13, 103, 74, 222, 237, 49, 197, 254, 24, 227, 165, 153, 119, 38, 184, 180, 124, 17, 68, 146, 217, 35, 32, 137, 46, 55, 63, 209, 91, 149, 188, 207, 205, 144, 135, 151, 178, 220, 252, 190, 97, 242, 86, 211, 171, 20, 42, 93, 158, 132, 60, 57, 83, 71, 109, 65, 162, 31, 45, 67, 216, 183, 123, 164, 118, 196, 23, 73, 236, 127, 12, 111, 246, 108, 161, 59, 82, 41, 157, 85, 170, 251, 96, 134, 177, 187, 204, 62, 90, 203, 89, 95, 176, 156, 169, 160, 81, 11, 245, 22, 235, 122, 117, 44, 215, 79, 174, 213, 233, 230, 231, 173, 232, 116, 214, 244, 234, 168, 80, 88, 175 };
+
+
+static bool isAfterVerticalTimingPattern(unsigned char x)
 {
     return x > 6;
 }
 
-unsigned char getYUpperBoundary(unsigned char x)
+static unsigned char getYUpperBoundary(unsigned char x)
 {
     if (x > 8 && x < 13)
     {
@@ -16,7 +27,7 @@ unsigned char getYUpperBoundary(unsigned char x)
     return 9;
 }
 
-unsigned char getYLowerBoundary(unsigned char x)
+static unsigned char getYLowerBoundary(unsigned char x)
 {
     if (x <= 8)
     {
@@ -26,7 +37,7 @@ unsigned char getYLowerBoundary(unsigned char x)
     return SIZE - 1;
 }
 
-bool isGoingUp(unsigned char x)
+static bool isGoingUp(unsigned char x)
 {
     return (bool)((x - isAfterVerticalTimingPattern(x)) / 2) % 2;
 }
@@ -35,7 +46,7 @@ bool isGoingUp(unsigned char x)
 /// @param x A pointer to the current x position, changed in place
 /// @param y A pointer to the current y position, changed in place
 /// @return true if the QR-Code is finished, false otherwise
-bool getNextDataPosition(unsigned char *px, unsigned char *py)
+static bool getNextDataPosition(unsigned char *px, unsigned char *py)
 {
     unsigned char x = *px;
     unsigned char y = *py;
@@ -97,7 +108,7 @@ bool getNextDataPosition(unsigned char *px, unsigned char *py)
 /// @param contentLength The number of bits from content to write, starting from MSB
 /// @param dataRecord A pointer to an array of data, used for EC computations, NULL if it not data (e.g. EC modules)
 /// @return true if the end of the QR-Code is reached, false otherwise
-bool writeToCode(bool *code, unsigned char *startX, unsigned char *startY, unsigned char content, unsigned char contentLength, unsigned char *dataRecord)
+static bool writeToCode(QrCode *code, unsigned char content, unsigned char contentLength, unsigned char *dataRecord)
 {
     static unsigned char dataIndex = 0;
 
@@ -118,25 +129,25 @@ bool writeToCode(bool *code, unsigned char *startX, unsigned char *startY, unsig
 
         if (bit)
         {
-            code[*startY * SIZE + *startX] = 1;
+            code->grid[code->lastY * code->size + code->lastX] = 1;
         }
         if (isFinished && i < contentLength - 1) {
             printf("Couldn't write to QR-Code, it is full\n");
             break;
         }
-        isFinished = getNextDataPosition(startX, startY);
+        isFinished = getNextDataPosition(&(code->lastX), &(code->lastY));
         contentCopy = contentCopy << 1;
     }
     return isFinished;
 }
 
-void displayCode(const bool *code, unsigned char size) {
+void displayCode(const QrCode *code) {
     printf("QR-Code: \n");
     signed short y;
-    for (y = -4; y < size + 4; y++) {
+    for (y = -4; y < code->size + 4; y++) {
         signed short x;
-        for (x = -4; x < size + 4; x++) {
-            bool black = (y >= 0 && y < size && x >= 0 && x < size && code[y * size + x]);
+        for (x = -4; x < code->size + 4; x++) {
+            bool black = (y >= 0 && y < code->size && x >= 0 && x < code->size && code->grid[y * code->size + x]);
             if (black) printf("\033[38;5;16m");
             printf("██");
             if (black) printf("\033[0m");
@@ -145,20 +156,20 @@ void displayCode(const bool *code, unsigned char size) {
     }
 }
 
-int drawCode(const bool *code, unsigned char size)
+int drawCode(const QrCode *code)
 {
-    BMP* bmp = BMP_Create(size + 8, size + 8, 8);
+    BMP* bmp = BMP_Create(code->size + 8, code->size + 8, 8);
     
     BMP_SetPaletteColor(bmp, 0, 255, 255, 255);
     BMP_SetPaletteColor(bmp, 1, 0, 0, 0);
 
     unsigned char y;
-    for (y = 0; y < size; y++)
+    for (y = 0; y < code->size; y++)
     {
         unsigned char x;
-        for (x = 0; x < size; x++)
+        for (x = 0; x < code->size; x++)
         {
-            BMP_SetPixelIndex(bmp, x + 4, y + 4, code[y * size + x]);
+            BMP_SetPixelIndex(bmp, x + 4, y + 4, code->grid[y * code->size + x]);
         }
     }
     BMP_WriteFile(bmp, "qr.bmp");
@@ -168,7 +179,7 @@ int drawCode(const bool *code, unsigned char size)
 }
 
 /// Converts the whole array from alpha notation to integer notation using the log table
-void alpha2int(unsigned char *array, unsigned char size) {
+static void alpha2int(unsigned char *array, unsigned char size) {
     unsigned char i;
     for (i = 0; i < size; i++) {
         array[i] = LOG_TABLE[array[i]];
@@ -176,7 +187,7 @@ void alpha2int(unsigned char *array, unsigned char size) {
 }
 
 /// Converts the whole array from integer notation to alpha notation using the antilog table
-void int2alpha(unsigned char *array, unsigned char size) {
+static void int2alpha(unsigned char *array, unsigned char size) {
     unsigned char i;
     for (i = 0; i < size; i++) {
         array[i] = ANTILOG_TABLE[array[i]];
@@ -188,7 +199,7 @@ void int2alpha(unsigned char *array, unsigned char size) {
 /// For each step we multiply the current polynomial with the following polynomial: (a^0x^1 + a^ix^0) where i is the step going from 1 to count - 1 (inclusive)
 /// @param generatorPolynomial The array in which the generator polynomial will be stored, the value at index i indicates the coefficient for x^i using alpha notation
 // @param count The number of EC codewords, the generator polynomial will have one more term than that value
-void computeGeneratorPolynomial(unsigned char *generatorPolynomial, unsigned char count) {
+static void computeGeneratorPolynomial(unsigned char *generatorPolynomial, unsigned char count) {
     // Alpha notation
     generatorPolynomial[0] = 0;
     generatorPolynomial[1] = 0;
@@ -232,7 +243,7 @@ static void debugArray(unsigned char *array, unsigned char size) {
 /// @param ECCount The number of codewords for the EC
 /// @param messageCodewords The codewords for the message, the first part of the message is in the start of the array
 /// @param messageCodewordsCount The number of codewords for the message
-void getECCodewords(unsigned char *result, unsigned char ECCount, const unsigned char *messageCodewords, unsigned char messageCodewordsCount) {
+static void getECCodewords(unsigned char *result, unsigned char ECCount, const unsigned char *messageCodewords, unsigned char messageCodewordsCount) {
     unsigned char *dividend = (unsigned char *)malloc(messageCodewordsCount * sizeof(char));
     if (dividend == NULL) return;
     memcpy(dividend, messageCodewords, messageCodewordsCount);
@@ -283,23 +294,23 @@ void getECCodewords(unsigned char *result, unsigned char ECCount, const unsigned
 /// @param code A pointer to the code's grid being a 1D array
 /// @param x The top-left corner's x position to place the finder pattern on the grid
 /// @param y The top-left corner's y position to place the finder pattern on the grid
-void writeFinderPatternToCode(bool *code, unsigned char x, unsigned char y) {
+static void writeFinderPatternToCode(QrCode *code, unsigned char x, unsigned char y) {
     // Draw a 7x7 square but avoid the second inner shell
     unsigned char sy;
     for (sy = 0; sy < 7; sy++) {
         unsigned char sx;
         for (sx = 0; sx < 7; sx++) {
-            code[(sy + y) * SIZE + (sx + x)] = !(((sx == 1 || sx == 5) && (sy > 0 && sy < 6)) || ((sy == 1 || sy == 5) && (sx > 0 && sx < 6)));
+            code->grid[(sy + y) * code->size + (sx + x)] = !(((sx == 1 || sx == 5) && (sy > 0 && sy < 6)) || ((sy == 1 || sy == 5) && (sx > 0 && sx < 6)));
         }
     }
 }
 
-void addFunctionPatterns(bool *code) {
+static void addFunctionPatterns(QrCode *code) {
     // Timing patterns
     unsigned char i;
-    for (i = 8; i < SIZE - 8; i++) {
-        code[i * SIZE + 6] = ~i & 1;
-        code[6 * SIZE + i] = ~i & 1;
+    for (i = 8; i < code->size - 8; i++) {
+        code->grid[i * code->size + 6] = ~i & 1;
+        code->grid[6 * code->size + i] = ~i & 1;
     }
 
     // Finder patterns
@@ -310,25 +321,25 @@ void addFunctionPatterns(bool *code) {
     // Separators
     for (i = 0; i < 8; i++) {
         // Top-Left
-        code[7 * SIZE + i] = 0;
-        code[i * SIZE + 7] = 0;
+        code->grid[7 * code->size + i] = 0;
+        code->grid[i * code->size + 7] = 0;
         // Top-Right
-        code[7 * SIZE + SIZE - 8 + i] = 0;
-        code[i * SIZE + SIZE - 8]     = 0;
+        code->grid[7 * code->size + code->size - 8 + i] = 0;
+        code->grid[i * code->size + code->size - 8]     = 0;
         // Bottom-Left
-        code[(SIZE - 8) * SIZE + i]     = 0;
-        code[(SIZE - 8 + i) * SIZE + 7] = 0;
+        code->grid[(code->size - 8) * code->size + i]     = 0;
+        code->grid[(code->size - 8 + i) * code->size + 7] = 0;
     }
 
     // Dark module
-    code[(SIZE - 8) * SIZE + 8] = 1;
+    code->grid[(code->size - 8) * code->size + 8] = 1;
 }
 
 /// Computes the whole 15-bits format information with error correction
 /// @param ECLevel The error correction level using the 2 LSB
 /// @param mask The mask pattern used, using the 3 LSB
 /// @return The format information using 15-bits out of 16, the MSB is not used
-unsigned short computeFormatInfoEC(unsigned char ECLevel, unsigned char mask) {
+static unsigned short computeFormatInfoEC(unsigned char ECLevel, unsigned char mask) {
     unsigned short formatInfo = 0;
 
     formatInfo |= ECLevel << 13;
@@ -359,39 +370,39 @@ unsigned short computeFormatInfoEC(unsigned char ECLevel, unsigned char mask) {
 /// @param ECLevel The error correction level for the data, in the 2 LSB
 /// @param mask The mask used for the data, in the 3 LSB
 /// @return The 15 bits of format information, the MSB is left to 0 and not used
-unsigned short addFormatInfo(bool *code, unsigned char ECLevel, unsigned char mask) {
-    unsigned short formatInfo = computeFormatInfoEC(ECLevel, mask);
+static unsigned short addFormatInfo(QrCode *code, unsigned char mask) {
+    unsigned short formatInfo = computeFormatInfoEC(code->ecLevel, mask);
 
     bool value;
     unsigned char i;
     for (i = 0; i < 15; i++) {
         value = formatInfo & (1 << (14 - i));
         if (i < 7) {
-            code[8 * SIZE + i + (i > 5)]        = value;
-            code[(SIZE - i - 1) * SIZE + 8]     = value;
+            code->grid[8 * code->size + i + (i > 5)]            = value;
+            code->grid[(code->size - i - 1) * code->size + 8]   = value;
         }
         else {
-            code[(15 - i - (i > 8)) * SIZE + 8] = value;
-            code[8 * SIZE + SIZE - 8 + i - 7]   = value;
+            code->grid[(15 - i - (i > 8)) * code->size + 8] = value;
+            code->grid[8 * code->size + code->size - 8 + i - 7]   = value;
         }
     }
 
     return formatInfo;
 }
 
-bool mask0(unsigned char x, unsigned char y) { return (y + x) % 2 == 0; }
-bool mask1(unsigned char x, unsigned char y) { return y % 2 == 0; }
-bool mask2(unsigned char x, unsigned char y) { return x % 3 == 0; }
-bool mask3(unsigned char x, unsigned char y) { return (y + x) % 3 == 0; }
-bool mask4(unsigned char x, unsigned char y) { return (y/2 + x/3) % 2 == 0; }
-bool mask5(unsigned char x, unsigned char y) { return (y * x) % 2 + (y * x) % 3 == 0; }
-bool mask6(unsigned char x, unsigned char y) { return ((y * x) % 2 + (y * x) % 3) % 2 == 0; }
-bool mask7(unsigned char x, unsigned char y) { return ((y + x) % 2 + (y * x) % 3) % 2 == 0; }
+static bool mask0(unsigned char x, unsigned char y) { return (y + x) % 2 == 0; }
+static bool mask1(unsigned char x, unsigned char y) { return y % 2 == 0; }
+static bool mask2(unsigned char x, unsigned char y) { return x % 3 == 0; }
+static bool mask3(unsigned char x, unsigned char y) { return (y + x) % 3 == 0; }
+static bool mask4(unsigned char x, unsigned char y) { return (y/2 + x/3) % 2 == 0; }
+static bool mask5(unsigned char x, unsigned char y) { return (y * x) % 2 + (y * x) % 3 == 0; }
+static bool mask6(unsigned char x, unsigned char y) { return ((y * x) % 2 + (y * x) % 3) % 2 == 0; }
+static bool mask7(unsigned char x, unsigned char y) { return ((y + x) % 2 + (y * x) % 3) % 2 == 0; }
 
 /// Returns the function for the adequate pattern depending on the position
 /// @param mask The index of the mask to use
 /// @return A pointer to the mask's function, it has 2 parameters for the coordinates and outputs a bool, 1 if the value at said coordinates needs to be changed, 0 otherwise
-bool (*getMaskPattern(unsigned char mask))(unsigned char, unsigned char) {
+static bool (*getMaskPattern(unsigned char mask))(unsigned char, unsigned char) {
     switch (mask) {
     case 0:
         return mask0;
@@ -417,14 +428,14 @@ bool (*getMaskPattern(unsigned char mask))(unsigned char, unsigned char) {
 /// Applies the specified mask to the code's data
 /// @param code The QR-Code
 /// @param mask The index of the mask to use
-void applyMask(bool *code, unsigned char mask) {
+static void applyMask(QrCode *code, unsigned char mask) {
     bool (*maskPattern)(unsigned char, unsigned char) = getMaskPattern(mask);
 
     unsigned char y;
-    for (y = 0; y < SIZE; y++) {
+    for (y = 0; y < code->size; y++) {
         unsigned char x;
-        for (x = 0; x < SIZE; x++) {
-            code[y * SIZE + x] ^= (*maskPattern)(x, y);
+        for (x = 0; x < code->size; x++) {
+            code->grid[y * code->size + x] ^= (*maskPattern)(x, y);
         }
     }
 }
@@ -433,18 +444,18 @@ void applyMask(bool *code, unsigned char mask) {
 /// Looping through each row and column, add a penalty for each group of give or more modules of the same color
 /// @param code The QR-Code, not changed
 /// @return The penalty for this rule
-unsigned int evaluateConsecutiveModules(const bool *code) {
+static unsigned int evaluateConsecutiveModules(const QrCode *code) {
     unsigned int penalty = 0;
 
     unsigned char sameModuleCount;
     bool lastModule;
 
     unsigned char x,y;
-    for (y = 0; y < SIZE; y++) {
+    for (y = 0; y < code->size; y++) {
         sameModuleCount = 1;
-        lastModule = code[y * SIZE];
-        for (x = 1; x < SIZE; x++) {
-            if (code[y * SIZE + x] == lastModule) sameModuleCount++;
+        lastModule = code->grid[y * code->size];
+        for (x = 1; x < code->size; x++) {
+            if (code->grid[y * code->size + x] == lastModule) sameModuleCount++;
             else {
                 lastModule = !lastModule;
                 if (sameModuleCount >= 5) penalty += sameModuleCount - 2;
@@ -453,11 +464,11 @@ unsigned int evaluateConsecutiveModules(const bool *code) {
         }
     }
 
-    for (x = 0; x < SIZE; x++) {
+    for (x = 0; x < code->size; x++) {
         sameModuleCount = 1;
-        lastModule = code[x];
-        for (y = 1; y < SIZE; y++) {
-            if (code[y * SIZE + x] == lastModule) sameModuleCount++;
+        lastModule = code->grid[x];
+        for (y = 1; y < code->size; y++) {
+            if (code->grid[y * code->size + x] == lastModule) sameModuleCount++;
             else {
                 lastModule = !lastModule;
                 if (sameModuleCount >= 5) penalty += sameModuleCount - 2;
@@ -473,14 +484,14 @@ unsigned int evaluateConsecutiveModules(const bool *code) {
 /// Add a penalty for any 2x2 square of the same color
 /// @param code The QR-Code, not changed
 /// @return The penalty for this rule
-unsigned int evaluateSquareModules(const bool *code) {
+static unsigned int evaluateSquareModules(const QrCode *code) {
     unsigned int penalty = 0;
     
     unsigned char x,y;
-    for (y = 1; y < SIZE; y++) {
-        for (x = 1; x < SIZE; x++) {
-            bool v = code[y * SIZE + x];
-            if (v == code[(y - 1) * SIZE + x] && v == code[y * SIZE + x - 1] && v == code[(y - 1) * SIZE + x - 1]) penalty += 3;
+    for (y = 1; y < code->size; y++) {
+        for (x = 1; x < code->size; x++) {
+            bool v = code->grid[y * code->size + x];
+            if (v == code->grid[(y - 1) * code->size + x] && v == code->grid[y * code->size + x - 1] && v == code->grid[(y - 1) * code->size + x - 1]) penalty += 3;
         }
     }
 
@@ -493,13 +504,13 @@ unsigned int evaluateSquareModules(const bool *code) {
 /// @param y The y-coordinate of the starting position for the look-alike
 /// @param isHorizontal Whether to check for position horizontally (true) or vertically (false)
 /// @return The amount to shift x or y in order to find the next possible position, 0 if look-alike was found
-unsigned char checkFinderLookAlike(const bool *code, unsigned char x, unsigned char y, bool isHorizontal) {
+static unsigned char checkFinderLookAlike(const QrCode *code, unsigned char x, unsigned char y, bool isHorizontal) {
     unsigned char notReversed = FINDER_PATTERN_LOOKALIKE_SIZE;
     unsigned char reversed = FINDER_PATTERN_LOOKALIKE_SIZE;
     
     unsigned char i;
     for (i = 0; i < FINDER_PATTERN_LOOKALIKE_SIZE; i++) {
-        const bool value = code[y * SIZE + x];
+        const bool value = code->grid[y * code->size + x];
         if (notReversed == FINDER_PATTERN_LOOKALIKE_SIZE && value != (FINDER_PATTERN_LOOKALIKE & (1 << (FINDER_PATTERN_LOOKALIKE_SIZE - 1 - i)))) notReversed = i;
        if (reversed == FINDER_PATTERN_LOOKALIKE_SIZE && value != (FINDER_PATTERN_LOOKALIKE &  (1 << i))) reversed = i;
 
@@ -517,12 +528,12 @@ unsigned char checkFinderLookAlike(const bool *code, unsigned char x, unsigned c
 /// Add a penalty if there are patterns that look similar to the finder patterns
 /// @param code The QR-Code, not changed
 /// @return The penalty for this rule
-unsigned int evaluateFinderPatternsLookAlike(const bool *code) {
+static unsigned int evaluateFinderPatternsLookAlike(const QrCode *code) {
     unsigned int penalty = 0;
 
     signed short x, y;
-    for (y = 0; y < SIZE; y++) {
-        x = SIZE - FINDER_PATTERN_LOOKALIKE_SIZE;
+    for (y = 0; y < code->size; y++) {
+        x = code->size - FINDER_PATTERN_LOOKALIKE_SIZE;
         while (x >= 0) {
             unsigned char skipCount = checkFinderLookAlike(code, x, y, true);
             if (skipCount == 0) {
@@ -535,8 +546,8 @@ unsigned int evaluateFinderPatternsLookAlike(const bool *code) {
         }
     }
 
-    for (x = 0; x < SIZE; x++) {
-        y = SIZE - FINDER_PATTERN_LOOKALIKE_SIZE;
+    for (x = 0; x < code->size; x++) {
+        y = code->size - FINDER_PATTERN_LOOKALIKE_SIZE;
         while (y >= 0) {
             unsigned char skipCount = checkFinderLookAlike(code, x, y, false);
             if (skipCount == 0) {
@@ -556,16 +567,16 @@ unsigned int evaluateFinderPatternsLookAlike(const bool *code) {
 /// If there are more or less black modules than white
 /// @param code The QR-Code, not changed
 /// @return The penalty for this rule
-unsigned int evaluateNotBalanced(const bool *code) {
+static unsigned int evaluateNotBalanced(const QrCode *code) {
     unsigned int penalty = 0;
 
-    unsigned int moduleCount = SIZE * SIZE;
+    unsigned int moduleCount = code->size * code->size;
     unsigned int darkModuleCount = 0;
 
     int x, y;
-    for (y = 0; y < SIZE; y++) {
-        for (x = 0; x < SIZE; x++) {
-            darkModuleCount += code[y * SIZE + x];
+    for (y = 0; y < code->size; y++) {
+        for (x = 0; x < code->size; x++) {
+            darkModuleCount += code->grid[y * code->size + x];
         }
     }
 
@@ -583,24 +594,23 @@ unsigned int evaluateNotBalanced(const bool *code) {
 /// @param code The QR-Code's grid, will be modified with the best suiting mask, function patterns are not included
 /// @param ECLevel The error correction level used
 /// @return The best mask used
-unsigned char useBestMask(bool *code, unsigned char ECLevel) {
+static unsigned char useBestMask(QrCode *code) {
     // For each mask, apply the mask, add version information and function patterns
     // Evaluate the mask, compare with minimum
     unsigned int lowestPenalty = -1;
     unsigned char lowestMask = 0;
 
-    const size_t codeSize = sizeof(bool) * SIZE * SIZE;
-    bool *copy = (bool*)malloc(codeSize);
+    QrCode *copy = (QrCode*)malloc(sizeof(QrCode));
 
-    displayCode(code, SIZE);
+    displayCode(code);
 
     unsigned char mask;
     for (mask = 0; mask < 8; mask++) {
-        memcpy(copy, code, codeSize);
+        memcpy(copy, code, sizeof(QrCode));
 
         applyMask(copy, mask);
         addFunctionPatterns(copy);
-        unsigned short formatString = addFormatInfo(copy, ECLevel, mask);
+        unsigned short formatString = addFormatInfo(copy, mask);
 
         signed char i;
         for (i = 14; i >= 0; i--) {
@@ -608,7 +618,7 @@ unsigned char useBestMask(bool *code, unsigned char ECLevel) {
         }
         printf("\n");
 
-        displayCode(copy, SIZE);
+        displayCode(copy);
 
         unsigned int penalty = evaluateConsecutiveModules(copy)
                              + evaluateSquareModules(copy)
@@ -629,12 +639,11 @@ unsigned char useBestMask(bool *code, unsigned char ECLevel) {
     return lowestMask;
 }
 
-void getCodeSizeFromMessage(QrCode* code) {
-    code->x = SIZE - 1;
-    code->y = SIZE - 1;
+void getCodeSizeFromMessage(char *message, QrCode *code) {
+    code->size = SIZE - 1;
 }
 
-int main(int argc, char** argv)
+/*int main(int argc, char** argv)
 {
     bool codeGrid[SIZE*SIZE] = { 0 };
 
@@ -705,5 +714,5 @@ int main(int argc, char** argv)
     drawCode(codeGrid, SIZE);
 
     return 0;
-}
+}*/
 
