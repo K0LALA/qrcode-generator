@@ -10,11 +10,11 @@ COMPILE_OPTS = -MMD -MP -c
 TEST_DIR := $(BUILD_DIR)/test
 TEST_SRCS = qdbmp.c generator.c test.c
 TEST_OBJS = $(addprefix $(TEST_DIR)/, $(patsubst %.c,%.o,$(TEST_SRCS)))
-TEST_DEPS = $(addprefix $(TEST_DIR)/, $(patsubst %.c,%.o,$(TEST_SRCS)))
+TEST_DEPS = $(addprefix $(TEST_DIR)/, $(patsubst %.c,%.d,$(TEST_SRCS)))
 TEST_EXE = $(TEST_DIR)/test
 
 .PHONY: debug
-debug: C_FLAGS += -g
+debug: CFLAGS += -g
 debug: $(EXE)
 
 $(BUILD_DIR)/.:
@@ -47,5 +47,5 @@ $(TEST_DIR)/%.o: %.c | $$(@D)/.
 clean:
 	-rm -rf $(BUILD_DIR)/ $(notdir $(EXE)) $(notdir $(TEST_EXE))
 
--include DEPS
--include TEST_DEPS
+-include $(DEPS)
+-include $(TEST_DEPS)
