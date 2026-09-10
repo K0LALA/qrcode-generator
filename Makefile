@@ -1,5 +1,5 @@
 BUILD_DIR := build
-SRCS := generator.c qdbmp.c
+SRCS := generator.c qdbmp.c test.c
 OBJS := $(addprefix $(BUILD_DIR)/, $(patsubst %.c,%.o,$(SRCS)))
 DEPS := $(addprefix $(BUILD_DIR)/, $(patsubst %.c,%.d,$(SRCS)))
 EXE = $(BUILD_DIR)/gen
@@ -14,7 +14,8 @@ TEST_DEPS = $(addprefix $(TEST_DIR)/, $(patsubst %.c,%.d,$(TEST_SRCS)))
 TEST_EXE = $(TEST_DIR)/test
 
 .PHONY: debug
-debug: CFLAGS += -g
+debug: CFLAGS += -ggdb
+debug: COMPILE_OPTS += -ggdb
 debug: $(EXE)
 
 $(BUILD_DIR)/.:
@@ -29,7 +30,8 @@ $(BUILD_DIR)/%.o: %.c | $$(@D)/.
 	$(LD) $(COMPILE_OPTS) $< -o $@
 
 .PHONY: testing
-testing: CFLAGS += -g
+testing: CFLAGS += -ggdb
+testing: COMPILE_OPTS += -ggdb
 testing: $(TEST_EXE)
 
 $(TEST_DIR)/.:

@@ -639,56 +639,48 @@ static unsigned char useBestMask(QrCode *code) {
     return lowestMask;
 }
 
-void getCodeSizeFromMessage(char *message, QrCode *code) {
-    code->size = SIZE - 1;
+static unsigned char initQrCodeFromMessage(QrCode *code, const char *message) {
+    printf("QR-Code init\n");
+    code->size = SIZE;
+
+    // Place in bottom-right corner
+    code->lastX = code->size - 1;
+    code->lastY = code->size - 1;
+
+    code->grid = (bool*)calloc(code->size * code->size, sizeof(bool));
+
+    code->encoding = BYTE;
+    code->ecLevel  = LOW;
+
+    return 17;
 }
 
-/*int main(int argc, char** argv)
+int fillQrCode(QrCode *code, const char* message)
 {
-    bool codeGrid[SIZE*SIZE] = { 0 };
+    unsigned char messageLength = initQrCodeFromMessage(code, message);
 
     // The beginning of the message has the highest exponent
-    unsigned char messageCodewords[DATA_COUNT] = { 0 };
+    unsigned char *messageCodewords = (unsigned char*)calloc(DATA_COUNT, sizeof(unsigned char));
 
-    char* message;
-    if (argc >= 2)
-    {
-        message = argv[1];
-    }
-    else
-    {
-        message = "github.com/K0LALA";
-    }
+    writeToCode(code, code->encoding << 4, 4, messageCodewords);
+    writeToCode(code, messageLength, 8, messageCodewords);
 
-    unsigned char x = SIZE - 1;
-    unsigned char y = SIZE - 1;
-
-    unsigned char encodingMode = 0b0100 << 4;        // Byte
-    writeToCode(codeGrid, &x, &y, encodingMode, 4, messageCodewords);
-    unsigned char messageLength = strlen(message);
-    writeToCode(codeGrid, &x, &y, messageLength, 8, messageCodewords);
-
-    char* messagePointer = message;
-    while(*messagePointer)
-    {
-        writeToCode(codeGrid, &x, &y, *messagePointer, 8, messageCodewords);
-        messagePointer++;
+    unsigned char i;
+    for (i = 0; i < messageLength; i++) {
+        writeToCode(code, message[i], 8, messageCodewords);
     }
 
     // Terminator
     // TODO: Compute actual required size for the terminator
-    writeToCode(codeGrid, &x,&y, 0, 4, messageCodewords);
+    writeToCode(code, 0, 4, messageCodewords);
 
     // Padding
     unsigned char paddingCount = 19 - 2 - messageLength;
 
-    int i;
     for (i = 0; i < paddingCount; i++) {
-        writeToCode(codeGrid, &x, &y, i & 1 ? 0b00010001 : 0b11101100, 8, messageCodewords);
+        writeToCode(code, i & 1 ? 0b00010001 : 0b11101100, 8, messageCodewords);
     }
 
-    unsigned char errorCorrectionLevel = 0b01;  // Low
-    
     unsigned char generator[EC_COUNT + 1] = { 0 };
     computeGeneratorPolynomial(generator, EC_COUNT);
 
@@ -696,23 +688,25 @@ void getCodeSizeFromMessage(char *message, QrCode *code) {
     getECCodewords(ECCodewords, EC_COUNT, messageCodewords, DATA_COUNT);
 
     for ( i = 0; i < EC_COUNT; i++) {
-        writeToCode(codeGrid, &x, &y, ECCodewords[i], 8, NULL);
+        writeToCode(code, ECCodewords[i], 8, NULL);
     }
 
     printf("\n");
 
     // Masking
-    unsigned char mask = useBestMask(codeGrid, errorCorrectionLevel);
+    unsigned char mask = useBestMask(code);
     
     // Function Patterns
-    addFunctionPatterns(codeGrid);
+    addFunctionPatterns(code);
 
     // Format Information
-    addFormatInfo(codeGrid, errorCorrectionLevel, mask);
+    addFormatInfo(code, mask);
 
-    displayCode(codeGrid, SIZE);
-    drawCode(codeGrid, SIZE);
+    displayCode(code);
+    drawCode(code);
+
+    free(messageCodewords);
 
     return 0;
-}*/
+}
 

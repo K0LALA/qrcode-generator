@@ -20,6 +20,14 @@
 #define DATA_COUNT 19
 #define EC_COUNT 7
 
+typedef enum EncodingEnum {
+    NUMERIC = 0b0001,   // Decimal digits (0-9), uses 4 bits
+    ALPHA   = 0b0010,   // Digits, uppercase letters and some symbols
+    BYTE    = 0b0100,   // ISO-8859-1 character set
+    KANJI   = 0b1000,   // Double-byte characters from the Shift JIS character set
+    ECI     = 0b0111    // Directly specifies the character set used
+} Encoding;
+
 typedef enum ECLevelEnum {
     LOW = 0b01,
     MEDIUM = 0b00,
@@ -32,14 +40,15 @@ typedef struct QrCodeStruct {
     unsigned char size;
     unsigned char lastX;
     unsigned char lastY;
-    EcLevel ecLevel;
+    Encoding encoding : 4;
+    EcLevel ecLevel : 2;
 } QrCode;
 
 
 void displayCode(const QrCode *code);
 int drawCode(const QrCode *code);
 
-void getCodeSizeFromMessage(char *message, QrCode *code);
+int fillQrCode(QrCode *code, const char *message);
 
 #endif // _GEN_H
 
