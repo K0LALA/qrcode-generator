@@ -230,14 +230,6 @@ static void computeGeneratorPolynomial(unsigned char *generatorPolynomial, unsig
     }
 }
 
-static void debugArray(unsigned char *array, unsigned char size) {
-    unsigned char i;
-    for (i = 0; i < size; i++) {
-        printf("%d ", array[i]);
-    }
-    printf("\n");
-}
-
 /// Computes the EC Codewords for the given message by performing a polynomial long division between a polynomial generated based on the message and a generator polynomial, the remainder of this division contains all the EC codewords
 /// @param result A pointer to an array of size ECCount which will have its content replaced by the EC codewords
 /// @param ECCount The number of codewords for the EC
@@ -390,14 +382,17 @@ static unsigned short addFormatInfo(QrCode *code, unsigned char mask) {
     return formatInfo;
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 static bool mask0(unsigned char x, unsigned char y) { return (y + x) % 2 == 0; }
-static bool mask1(unsigned char x, unsigned char y) { return y % 2 == 0; }
+static bool mask1(unsigned char _, unsigned char y) { return y % 2 == 0; }
 static bool mask2(unsigned char x, unsigned char y) { return x % 3 == 0; }
 static bool mask3(unsigned char x, unsigned char y) { return (y + x) % 3 == 0; }
 static bool mask4(unsigned char x, unsigned char y) { return (y/2 + x/3) % 2 == 0; }
 static bool mask5(unsigned char x, unsigned char y) { return (y * x) % 2 + (y * x) % 3 == 0; }
 static bool mask6(unsigned char x, unsigned char y) { return ((y * x) % 2 + (y * x) % 3) % 2 == 0; }
 static bool mask7(unsigned char x, unsigned char y) { return ((y + x) % 2 + (y * x) % 3) % 2 == 0; }
+#pragma GCC diagnostic pop
 
 /// Returns the function for the adequate pattern depending on the position
 /// @param mask The index of the mask to use
@@ -580,8 +575,8 @@ static unsigned int evaluateNotBalanced(const QrCode *code) {
         }
     }
 
-    unsigned int lowProportion = darkModuleCount * 20 / moduleCount;
-    unsigned int highProportion = lowProportion + 1;
+    signed char lowProportion = darkModuleCount * 20 / moduleCount;
+    signed char highProportion = lowProportion + 1;
     lowProportion = abs(lowProportion - 10);
     highProportion = abs(highProportion - 10);
 
@@ -612,20 +607,20 @@ static unsigned char useBestMask(QrCode *code) {
         addFunctionPatterns(copy);
         unsigned short formatString = addFormatInfo(copy, mask);
 
-        signed char i;
+        /*signed char i;
         for (i = 14; i >= 0; i--) {
             printf("%d", (bool) (formatString & (1 << i)));
         }
         printf("\n");
 
-        displayCode(copy);
+        displayCode(copy);*/
 
         unsigned int penalty = evaluateConsecutiveModules(copy)
                              + evaluateSquareModules(copy)
                              + evaluateFinderPatternsLookAlike(copy)
                              + evaluateNotBalanced(copy);
         
-        printf("%u\n", penalty);
+        //printf("%u\n", penalty);
 
         if (penalty < lowestPenalty) {
             lowestPenalty = penalty;
@@ -667,8 +662,11 @@ int fillQrCode(QrCode *code, const char* message)
 
     unsigned char i;
     for (i = 0; i < messageLength; i++) {
+        printf("%c ", message[i]);
         writeToCode(code, message[i], 8, messageCodewords);
     }
+
+    displayCode(code);
 
     // Terminator
     // TODO: Compute actual required size for the terminator
@@ -692,7 +690,7 @@ int fillQrCode(QrCode *code, const char* message)
     }
 
     printf("\n");
-
+    
     // Masking
     unsigned char mask = useBestMask(code);
     

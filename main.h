@@ -1,5 +1,5 @@
-#ifndef _TEST_H
-#define _TEST_H
+#ifndef _MAIN_H
+#define _MAIN_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,5 +11,5 @@ enum EXIT_CODES {
     MISSING_DATA = 1
 };
 
-#endif // _TEST_H
+#endif // _MAIN_H
 
