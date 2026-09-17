@@ -39,7 +39,7 @@ static unsigned char getYLowerBoundary(unsigned char x)
 
 static bool isGoingUp(unsigned char x)
 {
-    return (bool)((x - isAfterVerticalTimingPattern(x)) / 2) % 2;
+    return (int)((x - isAfterVerticalTimingPattern(x)) / 2) % 2;
 }
 
 /// Computes the next (x,y) position for the data on the QR-Code
@@ -55,7 +55,7 @@ static bool getNextDataPosition(unsigned char *px, unsigned char *py)
     //       or if y is either to the bottom and going down or to the top and going up
     // Top-right: (if x is even before timing patterns or if x is odd after timing patterns) and going up
     // Bottom-right: (if x is even before timing patterns or if x is odd after timing patterns) and going down
-    // 
+    //
     // Going up: if (int)(x / 2) is odd (need to account for timing patterns, substract 1 to x if after timing patterns)
     // Going down: if (int)(x / 2) is even (need to account for timing patterns, substract 1 to x if after timing patterns)
     //
@@ -113,17 +113,17 @@ static bool writeToCode(QrCode *code, unsigned char content, unsigned char conte
     static unsigned char dataIndex = 0;
 
     unsigned char contentCopy = content;
-    
+
     bool isFinished = false;
-    
+
     unsigned char i;
     for (i = 0; i < contentLength; i++)
     {
         bool bit = contentCopy & (1 << 7);
-        
+
         if (dataRecord != NULL) {
-            dataRecord[dataIndex / 8] |= (bit << (7 - dataIndex % 8));    
-            
+            dataRecord[dataIndex / 8] |= (bit << (7 - dataIndex % 8));
+
             dataIndex++;
         }
 
@@ -159,7 +159,7 @@ void displayCode(const QrCode *code) {
 int drawCode(const QrCode *code)
 {
     BMP* bmp = BMP_Create(code->size + 8, code->size + 8, 8);
-    
+
     BMP_SetPaletteColor(bmp, 0, 255, 255, 255);
     BMP_SetPaletteColor(bmp, 1, 0, 0, 0);
 
@@ -340,7 +340,7 @@ static unsigned short computeFormatInfoEC(unsigned char ECLevel, unsigned char m
     unsigned short formatEC = formatInfo;
     unsigned short generatorPolynomial;
     unsigned char length = 15;
-    
+
     for (;;) {
         while (~formatEC & (1 << (length - 1))) length--;
 
@@ -382,17 +382,14 @@ static unsigned short addFormatInfo(QrCode *code, unsigned char mask) {
     return formatInfo;
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
 static bool mask0(unsigned char x, unsigned char y) { return (y + x) % 2 == 0; }
-static bool mask1(unsigned char _, unsigned char y) { return y % 2 == 0; }
-static bool mask2(unsigned char x, unsigned char y) { return x % 3 == 0; }
+static bool mask1(unsigned char  , unsigned char y) { return y % 2 == 0; }
+static bool mask2(unsigned char x, unsigned char  ) { return x % 3 == 0; }
 static bool mask3(unsigned char x, unsigned char y) { return (y + x) % 3 == 0; }
 static bool mask4(unsigned char x, unsigned char y) { return (y/2 + x/3) % 2 == 0; }
 static bool mask5(unsigned char x, unsigned char y) { return (y * x) % 2 + (y * x) % 3 == 0; }
 static bool mask6(unsigned char x, unsigned char y) { return ((y * x) % 2 + (y * x) % 3) % 2 == 0; }
 static bool mask7(unsigned char x, unsigned char y) { return ((y + x) % 2 + (y * x) % 3) % 2 == 0; }
-#pragma GCC diagnostic pop
 
 /// Returns the function for the adequate pattern depending on the position
 /// @param mask The index of the mask to use
@@ -435,11 +432,18 @@ static void applyMask(QrCode *code, unsigned char mask) {
     }
 }
 
+static unsigned int getConsecutivePenalty(unsigned char sameModuleCount) {
+    if (sameModuleCount >= 5) {
+        return sameModuleCount - 2;
+    }
+    return 0;
+}
+
 /// Evaluates the code according to the first rule
 /// Looping through each row and column, add a penalty for each group of give or more modules of the same color
 /// @param code The QR-Code, not changed
 /// @return The penalty for this rule
-static unsigned int evaluateConsecutiveModules(const QrCode *code) {
+unsigned int evaluateConsecutiveModules(const QrCode *code) {
     unsigned int penalty = 0;
 
     unsigned char sameModuleCount;
@@ -453,10 +457,11 @@ static unsigned int evaluateConsecutiveModules(const QrCode *code) {
             if (code->grid[y * code->size + x] == lastModule) sameModuleCount++;
             else {
                 lastModule = !lastModule;
-                if (sameModuleCount >= 5) penalty += sameModuleCount - 2;
+                penalty += getConsecutivePenalty(sameModuleCount);
                 sameModuleCount = 1;
             }
         }
+        penalty += getConsecutivePenalty(sameModuleCount);
     }
 
     for (x = 0; x < code->size; x++) {
@@ -466,11 +471,13 @@ static unsigned int evaluateConsecutiveModules(const QrCode *code) {
             if (code->grid[y * code->size + x] == lastModule) sameModuleCount++;
             else {
                 lastModule = !lastModule;
-                if (sameModuleCount >= 5) penalty += sameModuleCount - 2;
+                penalty += getConsecutivePenalty(sameModuleCount);
                 sameModuleCount = 1;
             }
         }
+        penalty += getConsecutivePenalty(sameModuleCount);
     }
+
 
     return penalty;
 }
@@ -479,9 +486,9 @@ static unsigned int evaluateConsecutiveModules(const QrCode *code) {
 /// Add a penalty for any 2x2 square of the same color
 /// @param code The QR-Code, not changed
 /// @return The penalty for this rule
-static unsigned int evaluateSquareModules(const QrCode *code) {
+unsigned int evaluateSquareModules(const QrCode *code) {
     unsigned int penalty = 0;
-    
+
     unsigned char x,y;
     for (y = 1; y < code->size; y++) {
         for (x = 1; x < code->size; x++) {
@@ -499,18 +506,18 @@ static unsigned int evaluateSquareModules(const QrCode *code) {
 /// @param y The y-coordinate of the starting position for the look-alike
 /// @param isHorizontal Whether to check for position horizontally (true) or vertically (false)
 /// @return The amount to shift x or y in order to find the next possible position, 0 if look-alike was found
-static unsigned char checkFinderLookAlike(const QrCode *code, unsigned char x, unsigned char y, bool isHorizontal) {
+unsigned char checkFinderLookAlike(const QrCode *code, unsigned char x, unsigned char y, bool isHorizontal) {
     unsigned char notReversed = FINDER_PATTERN_LOOKALIKE_SIZE;
     unsigned char reversed = FINDER_PATTERN_LOOKALIKE_SIZE;
-    
+
     unsigned char i;
     for (i = 0; i < FINDER_PATTERN_LOOKALIKE_SIZE; i++) {
         const bool value = code->grid[y * code->size + x];
-        if (notReversed == FINDER_PATTERN_LOOKALIKE_SIZE && value != (FINDER_PATTERN_LOOKALIKE & (1 << (FINDER_PATTERN_LOOKALIKE_SIZE - 1 - i)))) notReversed = i;
-       if (reversed == FINDER_PATTERN_LOOKALIKE_SIZE && value != (FINDER_PATTERN_LOOKALIKE &  (1 << i))) reversed = i;
+        if (notReversed == FINDER_PATTERN_LOOKALIKE_SIZE && value != (bool)(FINDER_PATTERN_LOOKALIKE & (1 << (FINDER_PATTERN_LOOKALIKE_SIZE - 1 - i)))) notReversed = i;
+        if (reversed == FINDER_PATTERN_LOOKALIKE_SIZE && value != (bool)(FINDER_PATTERN_LOOKALIKE &  (1 << i))) reversed = i;
 
-       if (isHorizontal) x++;
-       else              y++;
+        if (isHorizontal) x++;
+        else              y++;
     }
 
     if (reversed == FINDER_PATTERN_LOOKALIKE_SIZE || notReversed == FINDER_PATTERN_LOOKALIKE_SIZE) return 0;
@@ -523,7 +530,7 @@ static unsigned char checkFinderLookAlike(const QrCode *code, unsigned char x, u
 /// Add a penalty if there are patterns that look similar to the finder patterns
 /// @param code The QR-Code, not changed
 /// @return The penalty for this rule
-static unsigned int evaluateFinderPatternsLookAlike(const QrCode *code) {
+unsigned int evaluateFinderPatternsLookAlike(const QrCode *code) {
     unsigned int penalty = 0;
 
     signed short x, y;
@@ -532,7 +539,7 @@ static unsigned int evaluateFinderPatternsLookAlike(const QrCode *code) {
         while (x >= 0) {
             unsigned char skipCount = checkFinderLookAlike(code, x, y, true);
             if (skipCount == 0) {
-                penalty += 40; 
+                penalty += 40;
                 x -= 11;
                 continue;
             }
@@ -562,7 +569,7 @@ static unsigned int evaluateFinderPatternsLookAlike(const QrCode *code) {
 /// If there are more or less black modules than white
 /// @param code The QR-Code, not changed
 /// @return The penalty for this rule
-static unsigned int evaluateNotBalanced(const QrCode *code) {
+unsigned int evaluateNotBalanced(const QrCode *code) {
     unsigned int penalty = 0;
 
     unsigned int moduleCount = code->size * code->size;
@@ -585,6 +592,19 @@ static unsigned int evaluateNotBalanced(const QrCode *code) {
     return penalty;
 }
 
+void copyCode(QrCode *dest, QrCode *src) {
+    memcpy(dest, src, sizeof(QrCode));
+    if (src->grid != NULL) {
+        dest->grid = (bool*)malloc(src->size * src->size);
+    }
+}
+
+void freeCode(QrCode *code) {
+    if (code->grid != NULL)
+        free(code->grid);
+    free(code);
+}
+
 /// Tests all masks to choose the best
 /// @param code The QR-Code's grid, will be modified with the best suiting mask, function patterns are not included
 /// @param ECLevel The error correction level used
@@ -597,29 +617,19 @@ static unsigned char useBestMask(QrCode *code) {
 
     QrCode *copy = (QrCode*)malloc(sizeof(QrCode));
 
-    displayCode(code);
-
     unsigned char mask;
     for (mask = 0; mask < 8; mask++) {
-        memcpy(copy, code, sizeof(QrCode));
+        copyCode(copy, code);
 
         applyMask(copy, mask);
         addFunctionPatterns(copy);
-        unsigned short formatString = addFormatInfo(copy, mask);
-
-        /*signed char i;
-        for (i = 14; i >= 0; i--) {
-            printf("%d", (bool) (formatString & (1 << i)));
-        }
-        printf("\n");
-
-        displayCode(copy);*/
+        addFormatInfo(copy, mask);
 
         unsigned int penalty = evaluateConsecutiveModules(copy)
                              + evaluateSquareModules(copy)
                              + evaluateFinderPatternsLookAlike(copy)
                              + evaluateNotBalanced(copy);
-        
+
         //printf("%u\n", penalty);
 
         if (penalty < lowestPenalty) {
@@ -628,14 +638,33 @@ static unsigned char useBestMask(QrCode *code) {
         }
     }
 
+    freeCode(copy);
+
     // In the end, get the most efficient mask and apply it to the code
     applyMask(code, lowestMask);
 
     return lowestMask;
 }
 
+/// Computes the most efficient encoding for use on the whole message
+/// TODO: Pack text that can use the same smaller encoding if it is more efficient
+/// @param text The text to encode
+/// @return The most efficient encoding
+Encoding getMostEfficientEncoding(const char *text) {
+    Encoding encoding = BYTE;
+
+    /*char c = *text;
+    while(c) {
+        if (encoding == NUMERIC && '0' <= c && c <= '9') ;
+        else if (encoding == ALPHA && false);
+
+        c = *(++text);
+    }*/
+
+    return encoding;
+}
+
 static unsigned char initQrCodeFromMessage(QrCode *code, const char *message) {
-    printf("QR-Code init\n");
     code->size = SIZE;
 
     // Place in bottom-right corner
@@ -644,10 +673,10 @@ static unsigned char initQrCodeFromMessage(QrCode *code, const char *message) {
 
     code->grid = (bool*)calloc(code->size * code->size, sizeof(bool));
 
-    code->encoding = BYTE;
+    code->encoding = getMostEfficientEncoding(message);
     code->ecLevel  = LOW;
 
-    return 17;
+    return strlen(message);
 }
 
 int fillQrCode(QrCode *code, const char* message)
@@ -662,11 +691,8 @@ int fillQrCode(QrCode *code, const char* message)
 
     unsigned char i;
     for (i = 0; i < messageLength; i++) {
-        printf("%c ", message[i]);
         writeToCode(code, message[i], 8, messageCodewords);
     }
-
-    displayCode(code);
 
     // Terminator
     // TODO: Compute actual required size for the terminator
@@ -689,11 +715,9 @@ int fillQrCode(QrCode *code, const char* message)
         writeToCode(code, ECCodewords[i], 8, NULL);
     }
 
-    printf("\n");
-    
     // Masking
     unsigned char mask = useBestMask(code);
-    
+
     // Function Patterns
     addFunctionPatterns(code);
 

@@ -4,9 +4,13 @@ OBJS := $(addprefix $(BUILD_DIR)/, $(patsubst %.c,%.o,$(SRCS)))
 DEPS := $(addprefix $(BUILD_DIR)/, $(patsubst %.c,%.d,$(SRCS)))
 EXE = $(BUILD_DIR)/gen
 CC = gcc
-CFLAGS = -Wall -Wextra -MMD -MP -c
+CFLAGS = -std=c23 -pedantic -Wall -Wextra -MMD -MP -c
+DO_UNIT_TESTS = 1
 
 .PHONY: debug
+ifeq ($(DO_UNIT_TESTS), 1)
+debug: CFLAGS += -DUNIT_TESTS
+endif
 debug: CC += -ggdb
 debug: $(EXE)
 

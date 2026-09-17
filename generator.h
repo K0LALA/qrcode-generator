@@ -28,7 +28,7 @@ typedef enum EncodingEnum {
     ECI     = 0b0111    // Directly specifies the character set used
 } Encoding;
 
-typedef enum ECLevelEnum {
+typedef enum EcLevelEnum {
     LOW = 0b01,
     MEDIUM = 0b00,
     QUARTILE = 0b11,
@@ -44,6 +44,14 @@ typedef struct QrCodeStruct {
     EcLevel ecLevel : 2;
 } QrCode;
 
+void copyCode(QrCode *dest, QrCode *src);
+void freeCode(QrCode *code);
+
+unsigned int evaluateConsecutiveModules(const QrCode *code);
+unsigned int evaluateSquareModules(const QrCode *code);
+unsigned char checkFinderLookAlike(const QrCode *code, unsigned char x, unsigned char y, bool isHorizontal);
+unsigned int evaluateFinderPatternsLookAlike(const QrCode *code);
+unsigned int evaluateNotBalanced(const QrCode *code);
 
 void displayCode(const QrCode *code);
 int drawCode(const QrCode *code);

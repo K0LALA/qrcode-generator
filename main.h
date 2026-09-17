@@ -3,12 +3,14 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #include "generator.h"
 
 enum EXIT_CODES {
     SUCCESS = EXIT_SUCCESS,
-    MISSING_DATA = 1
+    TESTS_DID_NOT_PASS = 1,
+    MISSING_DATA = 2
 };
 
 #endif // _MAIN_H
