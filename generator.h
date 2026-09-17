@@ -20,6 +20,10 @@
 #define DATA_COUNT 19
 #define EC_COUNT 7
 
+#define ALPHA_MIN_CHAR 32   // Space character
+#define ALPHA_TABLE_SHIFT ALPHA_MIN_CHAR
+#define ALPHA_MAX_CHAR 90   // 'Z' character
+
 typedef enum EncodingEnum {
     NUMERIC = 0b0001,   // Decimal digits (0-9), uses 4 bits
     ALPHA   = 0b0010,   // Digits, uppercase letters and some symbols
@@ -55,6 +59,8 @@ unsigned int evaluateNotBalanced(const QrCode *code);
 
 void displayCode(const QrCode *code);
 int drawCode(const QrCode *code);
+
+Encoding getMostEfficientEncoding(const char *text);
 
 int fillQrCode(QrCode *code, const char *message);
 

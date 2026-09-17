@@ -53,6 +53,13 @@ bool runUnitTests() {
     assert(evaluateSquareModules(&code2) == 90);
     assert(evaluateFinderPatternsLookAlike(&code2) == 80);
     assert(evaluateNotBalanced(&code2) == 0);
+
+    assert(getMostEfficientEncoding("0123456789") == NUMERIC);
+    assert(getMostEfficientEncoding("ALPHA-TEXT") == ALPHA);
+    assert(getMostEfficientEncoding("OLZEASG7B9") == ALPHA);
+    assert(getMostEfficientEncoding("Z $%*+-./:") == ALPHA);
+    assert(getMostEfficientEncoding("byte-text!") == BYTE);
+    assert(getMostEfficientEncoding("Hello, World!\n") == BYTE);    
     
         
     return passed;

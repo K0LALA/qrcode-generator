@@ -10,6 +10,13 @@ const unsigned char LOG_TABLE[256] = { 1, 2, 4, 8, 16, 32, 64, 128, 29, 58, 116,
 // Index 0 should not be used
 const unsigned char ANTILOG_TABLE[256] = { 0, 0, 1, 25, 2, 50, 26, 198, 3, 223, 51, 238, 27, 104, 199, 75, 4, 100, 224, 14, 52, 141, 239, 129, 28, 193, 105, 248, 200, 8, 76, 113, 5, 138, 101, 47, 225, 36, 15, 33, 53, 147, 142, 218, 240, 18, 130, 69, 29, 181, 194, 125, 106, 39, 249, 185, 201, 154, 9, 120, 77, 228, 114, 166, 6, 191, 139, 98, 102, 221, 48, 253, 226, 152, 37, 179, 16, 145, 34, 136, 54, 208, 148, 206, 143, 150, 219, 189, 241, 210, 19, 92, 131, 56, 70, 64, 30, 66, 182, 163, 195, 72, 126, 110, 107, 58, 40, 84, 250, 133, 186, 61, 202, 94, 155, 159, 10, 21, 121, 43, 78, 212, 229, 172, 115, 243, 167, 87, 7, 112, 192, 247, 140, 128, 99, 13, 103, 74, 222, 237, 49, 197, 254, 24, 227, 165, 153, 119, 38, 184, 180, 124, 17, 68, 146, 217, 35, 32, 137, 46, 55, 63, 209, 91, 149, 188, 207, 205, 144, 135, 151, 178, 220, 252, 190, 97, 242, 86, 211, 171, 20, 42, 93, 158, 132, 60, 57, 83, 71, 109, 65, 162, 31, 45, 67, 216, 183, 123, 164, 118, 196, 23, 73, 236, 127, 12, 111, 246, 108, 161, 59, 82, 41, 157, 85, 170, 251, 96, 134, 177, 187, 204, 62, 90, 203, 89, 95, 176, 156, 169, 160, 81, 11, 245, 22, 235, 122, 117, 44, 215, 79, 174, 213, 233, 230, 231, 173, 232, 116, 214, 244, 234, 168, 80, 88, 175 };
 
+// Alphanumeric conversion table
+const unsigned char ALPHA_TABLE[ALPHA_MAX_CHAR - ALPHA_MIN_CHAR + 1] = {
+    36, 255, 255, 255, 37, 38, 255, 255, 255, 255, 39, 40, 255,
+    41, 42, 43, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 44, 255, 255, 255,
+    255, 255, 255, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+    21, 22, 23,	24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35
+};
 
 static bool isAfterVerticalTimingPattern(unsigned char x)
 {
@@ -646,20 +653,33 @@ static unsigned char useBestMask(QrCode *code) {
     return lowestMask;
 }
 
+static bool isNumericCharacter(unsigned char character) {
+    return '0' <= character && character <= '9';
+}
+
+static bool isAlphaCharacter(unsigned char character) {
+    return character >= ALPHA_MIN_CHAR && character <= ALPHA_MAX_CHAR && ALPHA_TABLE[character - ALPHA_TABLE_SHIFT] != 255;
+}
+
+/*static bool isByteCharacter(unsigned char character) {
+    return true;
+}*/
+
 /// Computes the most efficient encoding for use on the whole message
 /// TODO: Pack text that can use the same smaller encoding if it is more efficient
 /// @param text The text to encode
 /// @return The most efficient encoding
 Encoding getMostEfficientEncoding(const char *text) {
-    Encoding encoding = BYTE;
+    Encoding encoding = NUMERIC;
 
-    /*char c = *text;
+    char c = *text;
     while(c) {
-        if (encoding == NUMERIC && '0' <= c && c <= '9') ;
-        else if (encoding == ALPHA && false);
+        if (encoding == NUMERIC && !isNumericCharacter(c))  encoding = ALPHA;
+        if (encoding == ALPHA && !isAlphaCharacter(c))      encoding = BYTE;
+        if (encoding == BYTE) break;
 
         c = *(++text);
-    }*/
+    }
 
     return encoding;
 }
