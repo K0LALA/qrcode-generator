@@ -14,6 +14,9 @@
 #define FINDER_PATTERN_LOOKALIKE 0b10111010000
 #define FINDER_PATTERN_LOOKALIKE_SIZE 11
 
+#define SIZE2VERSION(size)      ((size - 17) / 4)
+#define VERSION2SIZE(version)   (17 + version * 4)
+
 // TODO: Change with some computed values
 // Version 1-L
 #define SIZE 21
@@ -25,7 +28,7 @@
 #define ALPHA_MAX_CHAR 90   // 'Z' character
 
 typedef enum EncodingEnum {
-    NUMERIC = 0b0001,   // Decimal digits (0-9), uses 4 bits
+    NUMERIC = 0b0001,   // Decimal digits (0-9)
     ALPHA   = 0b0010,   // Digits, uppercase letters and some symbols
     BYTE    = 0b0100,   // ISO-8859-1 character set
     KANJI   = 0b1000,   // Double-byte characters from the Shift JIS character set

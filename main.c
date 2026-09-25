@@ -59,7 +59,7 @@ bool runUnitTests() {
     assert(getMostEfficientEncoding("OLZEASG7B9") == ALPHA);
     assert(getMostEfficientEncoding("Z $%*+-./:") == ALPHA);
     assert(getMostEfficientEncoding("byte-text!") == BYTE);
-    assert(getMostEfficientEncoding("Hello, World!\n") == BYTE);    
+    assert(getMostEfficientEncoding("Hello, World!\n") == BYTE);
     
         
     return passed;
@@ -85,7 +85,6 @@ int main (int argc, char **argv) {
     fillQrCode(&code, message);
     free(code.grid);
 
-    // TODO: Investigate, last run was not showing data on the code, only masking, format info and function patterns
     return SUCCESS;
 }
 

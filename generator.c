@@ -18,6 +18,59 @@ const unsigned char ALPHA_TABLE[ALPHA_MAX_CHAR - ALPHA_MIN_CHAR + 1] = {
     21, 22, 23,	24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35
 };
 
+static unsigned char getCSI_STEncodingIndex(Encoding encoding) {
+    unsigned char index = 0;
+
+    switch (encoding) {
+    case NUMERIC:
+        index = 0;
+        break;
+    case ALPHA:
+        index = 1;
+        break;
+    case BYTE:
+        index = 2;
+        break;
+    case KANJI:
+        index = 3;
+        break;
+    default:
+        fprintf(stderr, "Unknown encoding.\n");
+        break;
+    }
+
+    return index;
+}
+
+static unsigned char getCSI_STVersionIndex(unsigned char version) {
+    unsigned char index;
+
+    if (1 <= version && version <= 9) {
+        index = 0;
+    }
+    else if (10 <= version && version <= 26) {
+        index = 1;
+    }
+    else if (27 <= version && version <= 40) {
+        index = 2;
+    }
+    else {
+        fprintf(stderr, "Unknown version.\n");
+        index = 0;
+    }
+
+    return index;
+}
+
+// Note: Not for ECI
+const unsigned char CHARACTER_COUNT_INDICATOR_SIZE_TABLE[4][3] = {
+    { 10, 12, 14 },
+    {  9, 11, 13 },
+    {  8, 16, 16 },
+    {  8, 10, 12 }
+};
+
+
 static bool isAfterVerticalTimingPattern(unsigned char x)
 {
     return x > 6;
@@ -109,24 +162,20 @@ static bool getNextDataPosition(unsigned char *px, unsigned char *py)
 
 /// Writes the content starting from startX and startY
 /// @param code A pointer to the first element of the code
-/// @param startX A pointer to the starting x position for the data, will be changed to starting position for next content
-/// @param startY A pointer to the starting y position for the data, will be changed to starting position for next content
 /// @param content The content, MSB will be written first on the QR-Code
 /// @param contentLength The number of bits from content to write, starting from MSB
 /// @param dataRecord A pointer to an array of data, used for EC computations, NULL if it not data (e.g. EC modules)
-/// @return true if the end of the QR-Code is reached, false otherwise
-static bool writeToCode(QrCode *code, unsigned char content, unsigned char contentLength, unsigned char *dataRecord)
+/// @return The number of bits that have been written since the beginning of the program
+static unsigned short writeToCode(QrCode *code, unsigned char content, unsigned char contentLength, unsigned char *dataRecord)
 {
-    static unsigned char dataIndex = 0;
-
-    unsigned char contentCopy = content;
+    static unsigned short dataIndex = 0;
 
     bool isFinished = false;
 
     unsigned char i;
     for (i = 0; i < contentLength; i++)
     {
-        bool bit = contentCopy & (1 << 7);
+        bool bit = content & (1 << 7);
 
         if (dataRecord != NULL) {
             dataRecord[dataIndex / 8] |= (bit << (7 - dataIndex % 8));
@@ -138,14 +187,33 @@ static bool writeToCode(QrCode *code, unsigned char content, unsigned char conte
         {
             code->grid[code->lastY * code->size + code->lastX] = 1;
         }
+        
         if (isFinished && i < contentLength - 1) {
             printf("Couldn't write to QR-Code, it is full\n");
             break;
         }
         isFinished = getNextDataPosition(&(code->lastX), &(code->lastY));
-        contentCopy = contentCopy << 1;
+        content = content << 1;
     }
-    return isFinished;
+
+    if (dataRecord != NULL)
+        printf("%d\n", dataIndex);
+    return dataIndex;
+}
+
+/// @brief Writes the content in the unsigned short to the code
+/// @param code The QR-Code to write to
+/// @param content The unsigned short to write, MSB will be written first
+/// @param contentLength The length of the content, starting from the MSB
+/// @param dataRecord A pointer to an array of data, stores data codewords used for EC, can be NULL if writing EC modules
+/// @return The amout of bits that have been written since the beginning of the program
+static unsigned short writeShortToCode(QrCode *code, unsigned short content, unsigned char contentLength, unsigned char *dataRecord) {
+    unsigned short writtenBits;
+    writtenBits = writeToCode(code, (unsigned char)(content >> 8), contentLength >= 8 ? 8 : contentLength, dataRecord);
+    if (contentLength > 8) {
+        writtenBits = writeToCode(code, (unsigned char)content, contentLength - 8, dataRecord);
+    }
+    return writtenBits;
 }
 
 void displayCode(const QrCode *code) {
@@ -684,7 +752,10 @@ Encoding getMostEfficientEncoding(const char *text) {
     return encoding;
 }
 
-static unsigned char initQrCodeFromMessage(QrCode *code, const char *message) {
+/// Inits the QR-Code with dynamically allocated memory for the grid
+/// Chooses the most efficient encoding, EC-Level for the data
+/// @return The length of the message
+static unsigned short initQrCodeFromMessage(QrCode *code, const char *message) {
     code->size = SIZE;
 
     // Place in bottom-right corner
@@ -696,31 +767,131 @@ static unsigned char initQrCodeFromMessage(QrCode *code, const char *message) {
     code->encoding = getMostEfficientEncoding(message);
     code->ecLevel  = LOW;
 
-    return strlen(message);
+    return (unsigned short)strlen(message);
+}
+
+static unsigned char getCharacterCountIndicatorSize(const QrCode *code) {
+    return CHARACTER_COUNT_INDICATOR_SIZE_TABLE[getCSI_STEncodingIndex(code->encoding)][getCSI_STVersionIndex(SIZE2VERSION(code->size))];
+}
+
+static unsigned char getRequiredTerminatorSize(unsigned char remainingBits) {
+    return remainingBits <= 4 ? remainingBits : (4 + (remainingBits - 4) % 8);
+}
+
+static unsigned short encodeNumeric(QrCode *code, const char *message, unsigned short length, unsigned char *codewords) {
+    unsigned short currentNumber = 0, writtenBits, i;
+    for (i = 0; i < length; i++) {
+
+        currentNumber *= 10;
+        currentNumber += message[i];
+
+        if ((i + 1) % 3 == 0) {
+            // Writing starts with MSB, hence we shift currentNumber bits
+            writtenBits = writeShortToCode(code, currentNumber << 6, 10, codewords);
+            currentNumber = 0;
+        }
+    }
+
+    // currentNumber holds 1 digit
+    if (i % 3 == 1) {
+        writtenBits = writeToCode(code, currentNumber << 4, 4, codewords);
+    }
+    // currentNumber holds 2 digits
+    else if (i % 3 == 2) {
+        writtenBits = writeToCode(code, currentNumber << 1, 7, codewords);
+    }
+
+    return writtenBits;
+}
+
+static unsigned short encodeAlpha(QrCode *code, const char *message, unsigned short length, unsigned char *codewords) {
+    unsigned short current = 0, writtenBits, i;
+    for (i = 0; i < length; i++) {
+        current *= 45;
+        current += ALPHA_TABLE[message[i] - ALPHA_TABLE_SHIFT];
+
+        if (i % 2) {
+            writtenBits = writeShortToCode(code, current << 5, 11, codewords);
+            current = 0;
+        }
+    }
+
+    // A character has no pair
+    if (i % 2) {
+        writtenBits = writeToCode(code, (unsigned char)(current << 2), 6, codewords);
+    }
+
+    return writtenBits;
+}
+
+static unsigned short encodeByte(QrCode *code, const char *message, unsigned short length, unsigned char *codewords) {
+    unsigned short i, writtenBits;
+    for (i = 0; i < length; i++) {
+        writtenBits = writeToCode(code, message[i], 8, codewords);
+    }
+    return writtenBits;
+}
+
+/// @brief Encodes the message in the given encoding and writes it to the code
+/// @param encoding The encoding
+/// @param message The message to encode
+/// @param codewords The codewords to store the encoded message in bytes, use later for EC
+static unsigned short encode(QrCode *code, const char *message, unsigned short length, unsigned char *codewords) {
+    unsigned short writtenBits = 0;
+
+    switch (code->encoding) {
+    case NUMERIC:
+        writtenBits = encodeNumeric(code, message, length, codewords);
+        break;
+    case ALPHA:
+        writtenBits = encodeAlpha(code, message, length, codewords);
+        break;
+
+    case BYTE:
+        writtenBits = encodeByte(code, message, length, codewords);
+        break;
+
+    case KANJI:
+        fprintf(stderr, "Kanji encoding not supported yet.\n");
+        break;
+
+    default:
+        fprintf(stderr, "Unknown encoding.\n");
+        break;
+    }
+
+    return writtenBits;
 }
 
 int fillQrCode(QrCode *code, const char* message)
 {
-    unsigned char messageLength = initQrCodeFromMessage(code, message);
+    unsigned short messageLength = initQrCodeFromMessage(code, message);
 
     // The beginning of the message has the highest exponent
     unsigned char *messageCodewords = (unsigned char*)calloc(DATA_COUNT, sizeof(unsigned char));
 
     writeToCode(code, code->encoding << 4, 4, messageCodewords);
-    writeToCode(code, messageLength, 8, messageCodewords);
+    
+    unsigned char characterCountIndicatorSize = getCharacterCountIndicatorSize(code);
+    writeShortToCode(code, (messageLength << (16 - characterCountIndicatorSize)), characterCountIndicatorSize, messageCodewords);
+    //writeToCode(code, (unsigned char) messageLength, characterCountIndicatorSize < 8 ? characterCountIndicatorSize : 8, messageCodewords);
+    //writeToCode(code, (unsigned char) (messageLength >> 8), characterCountIndicatorSize - 8, messageCodewords);
 
-    unsigned char i;
-    for (i = 0; i < messageLength; i++) {
-        writeToCode(code, message[i], 8, messageCodewords);
-    }
+    unsigned short writtenBits = encode(code, message, messageLength, messageCodewords);
 
-    // Terminator
-    // TODO: Compute actual required size for the terminator
-    writeToCode(code, 0, 4, messageCodewords);
+    // 4 + cCIS + messageLength * 8 bits have been written on the code
+    // We have DATA_COUNT - () left for the data codewords
+
+    unsigned char remainingSpace = DATA_COUNT * 8 - writtenBits;
+    unsigned char terminatorSize = getRequiredTerminatorSize(remainingSpace);
+    writeToCode(code, 0, terminatorSize <= 8 ? terminatorSize : 8, messageCodewords);
+    if (terminatorSize > 8)
+        writeToCode(code, 0, terminatorSize - 8, messageCodewords);
 
     // Padding
-    unsigned char paddingCount = 19 - 2 - messageLength;
+        unsigned char paddingCount = (remainingSpace - terminatorSize) / 8;
 
+    unsigned char i;
     for (i = 0; i < paddingCount; i++) {
         writeToCode(code, i & 1 ? 0b00010001 : 0b11101100, 8, messageCodewords);
     }
