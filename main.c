@@ -13,7 +13,7 @@ static bool grid1[121] = {0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1,
                         1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0,
                         0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0,
                         1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0};
-static const QrCode code1 = { grid1, 11, 10, 10, BYTE, LOW };
+static const QrCode code1 = { grid1, 0, 11, 10, 10, BYTE, LOW };
 
 static bool grid2[441] = {
 1,1,1,1,1,1,1,0,1,1,0,0,0,0,1,1,1,1,1,1,1,
@@ -39,7 +39,9 @@ static bool grid2[441] = {
 1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,0,0,0,0,1
 };
 // HELLO WORLD in Alphanumeric encoding
-static const QrCode code2 = { grid2, 21, 20, 20, ALPHA, HIGH };
+static const QrCode code2 = { grid2, 0, 21, 20, 20, ALPHA, HIGH };
+
+static const unsigned char codewords1[4] = { 0x3a, 0xf1, 0xd8, 0xa0 };
 
 bool runUnitTests() {
     bool passed = true;
@@ -60,7 +62,9 @@ bool runUnitTests() {
     assert(getMostEfficientEncoding("Z $%*+-./:") == ALPHA);
     assert(getMostEfficientEncoding("byte-text!") == BYTE);
     assert(getMostEfficientEncoding("Hello, World!\n") == BYTE);
-    
+
+    // Note: Functions that call the function writeToCode prevent the program from being used afterwards
+    // That is because of the static variable dataIndex which keeps its status after being used by the tests
         
     return passed;
 }
@@ -71,6 +75,7 @@ int main (int argc, char **argv) {
 
 #ifdef UNIT_TESTS
     if (!runUnitTests()) return TESTS_DID_NOT_PASS;
+    printf("Unit tests all passed.\n");
 #endif
 
     if (argc <= 1) {

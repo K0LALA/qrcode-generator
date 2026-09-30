@@ -62,6 +62,10 @@ static unsigned char getCSI_STVersionIndex(unsigned char version) {
     return index;
 }
 
+// Gives the number of bits the character count indicator is on the QR-Code
+// This is the second data after the encoding that is put on the code
+// Row is for the encoding, in order: NUMERIC,ALPHA,BYTE,KANJI
+// Column is for version ranges, in order: 1-9,10-26,27-40
 // Note: Not for ECI
 const unsigned char CHARACTER_COUNT_INDICATOR_SIZE_TABLE[4][3] = {
     { 10, 12, 14 },
@@ -168,8 +172,6 @@ static bool getNextDataPosition(unsigned char *px, unsigned char *py)
 /// @return The number of bits that have been written since the beginning of the program
 static unsigned short writeToCode(QrCode *code, unsigned char content, unsigned char contentLength, unsigned char *dataRecord)
 {
-    static unsigned short dataIndex = 0;
-
     bool isFinished = false;
 
     unsigned char i;
@@ -178,9 +180,9 @@ static unsigned short writeToCode(QrCode *code, unsigned char content, unsigned 
         bool bit = content & (1 << 7);
 
         if (dataRecord != NULL) {
-            dataRecord[dataIndex / 8] |= (bit << (7 - dataIndex % 8));
+            dataRecord[code->dataIndex / 8] |= (bit << (7 - code->dataIndex % 8));
 
-            dataIndex++;
+            (code->dataIndex)++;
         }
 
         if (bit)
@@ -196,9 +198,8 @@ static unsigned short writeToCode(QrCode *code, unsigned char content, unsigned 
         content = content << 1;
     }
 
-    if (dataRecord != NULL)
-        printf("%d\n", dataIndex);
-    return dataIndex;
+    // TODO: Check if removable
+    return code->dataIndex;
 }
 
 /// @brief Writes the content in the unsigned short to the code
@@ -755,7 +756,9 @@ Encoding getMostEfficientEncoding(const char *text) {
 /// Inits the QR-Code with dynamically allocated memory for the grid
 /// Chooses the most efficient encoding, EC-Level for the data
 /// @return The length of the message
-static unsigned short initQrCodeFromMessage(QrCode *code, const char *message) {
+unsigned short initQrCodeFromMessage(QrCode *code, const char *message) {
+    code->dataIndex = 0;
+
     code->size = SIZE;
 
     // Place in bottom-right corner
@@ -778,12 +781,12 @@ static unsigned char getRequiredTerminatorSize(unsigned char remainingBits) {
     return remainingBits <= 4 ? remainingBits : (4 + (remainingBits - 4) % 8);
 }
 
-static unsigned short encodeNumeric(QrCode *code, const char *message, unsigned short length, unsigned char *codewords) {
+unsigned short encodeNumeric(QrCode *code, const char *message, unsigned short length, unsigned char *codewords) {
     unsigned short currentNumber = 0, writtenBits, i;
     for (i = 0; i < length; i++) {
 
         currentNumber *= 10;
-        currentNumber += message[i];
+        currentNumber += message[i] - '0';
 
         if ((i + 1) % 3 == 0) {
             // Writing starts with MSB, hence we shift currentNumber bits
@@ -804,7 +807,7 @@ static unsigned short encodeNumeric(QrCode *code, const char *message, unsigned 
     return writtenBits;
 }
 
-static unsigned short encodeAlpha(QrCode *code, const char *message, unsigned short length, unsigned char *codewords) {
+unsigned short encodeAlpha(QrCode *code, const char *message, unsigned short length, unsigned char *codewords) {
     unsigned short current = 0, writtenBits, i;
     for (i = 0; i < length; i++) {
         current *= 45;
@@ -824,7 +827,7 @@ static unsigned short encodeAlpha(QrCode *code, const char *message, unsigned sh
     return writtenBits;
 }
 
-static unsigned short encodeByte(QrCode *code, const char *message, unsigned short length, unsigned char *codewords) {
+unsigned short encodeByte(QrCode *code, const char *message, unsigned short length, unsigned char *codewords) {
     unsigned short i, writtenBits;
     for (i = 0; i < length; i++) {
         writtenBits = writeToCode(code, message[i], 8, codewords);
@@ -874,13 +877,8 @@ int fillQrCode(QrCode *code, const char* message)
     
     unsigned char characterCountIndicatorSize = getCharacterCountIndicatorSize(code);
     writeShortToCode(code, (messageLength << (16 - characterCountIndicatorSize)), characterCountIndicatorSize, messageCodewords);
-    //writeToCode(code, (unsigned char) messageLength, characterCountIndicatorSize < 8 ? characterCountIndicatorSize : 8, messageCodewords);
-    //writeToCode(code, (unsigned char) (messageLength >> 8), characterCountIndicatorSize - 8, messageCodewords);
 
     unsigned short writtenBits = encode(code, message, messageLength, messageCodewords);
-
-    // 4 + cCIS + messageLength * 8 bits have been written on the code
-    // We have DATA_COUNT - () left for the data codewords
 
     unsigned char remainingSpace = DATA_COUNT * 8 - writtenBits;
     unsigned char terminatorSize = getRequiredTerminatorSize(remainingSpace);
@@ -889,7 +887,7 @@ int fillQrCode(QrCode *code, const char* message)
         writeToCode(code, 0, terminatorSize - 8, messageCodewords);
 
     // Padding
-        unsigned char paddingCount = (remainingSpace - terminatorSize) / 8;
+    unsigned char paddingCount = (remainingSpace - terminatorSize) / 8;
 
     unsigned char i;
     for (i = 0; i < paddingCount; i++) {

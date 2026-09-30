@@ -44,6 +44,7 @@ typedef enum EcLevelEnum {
 
 typedef struct QrCodeStruct {
     bool *grid;
+    unsigned short dataIndex;
     unsigned char size;
     unsigned char lastX;
     unsigned char lastY;
@@ -64,6 +65,11 @@ void displayCode(const QrCode *code);
 int drawCode(const QrCode *code);
 
 Encoding getMostEfficientEncoding(const char *text);
+unsigned short initQrCodeFromMessage(QrCode *code, const char *message);
+
+unsigned short encodeNumeric(QrCode *code, const char *message, unsigned short length, unsigned char *codewords);
+unsigned short encodeAlpha(QrCode *code, const char *message, unsigned short length, unsigned char *codewords);
+unsigned short encodeByte(QrCode *code, const char *message, unsigned short length, unsigned char *codewords);
 
 int fillQrCode(QrCode *code, const char *message);
 
