@@ -13,8 +13,10 @@ First, clone this repo:
 `git clone https://github.com/K0LALA/qrcode-generator.git`
 
 Enter the directory and build using Make:
-`cd qrcode-generator
-make`
+```sh
+cd qrcode-generator
+make
+```
 
 Note: On Windows, you may need to change the build commands.
 
